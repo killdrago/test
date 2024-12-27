@@ -2323,37 +2323,37 @@ void OnPositionClose(ulong ticket)
 //+------------------------------------------------------------------+
 //| Fonction pour deplacer le texte avec le tableau                  |
 //+------------------------------------------------------------------+
-void OnChartEvent(int id, int event, int param)
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
-   if (event == CHARTEVENT_OBJECT_DRAG)
+   if (id == CHARTEVENT_OBJECT_DRAG)
    {
       // Obtenir la nouvelle position du tableau
-      int newX = ObjectGet("FVG_table", OBJPROP_X);
-      int newY = ObjectGet("FVG_table", OBJPROP_Y);
+      double newX = ObjectGetDouble(0, "FVG_table", OBJPROP_X);
+      double newY = ObjectGetDouble(0, "FVG_table", OBJPROP_Y);
 
       // Mettre à jour la position du texte
-      ObjectMove("FVG_text", newX + 10, newY + 20);
+      ObjectMove("FVG_text", 0, newX + 10, newY + 20);
 
       // Obtenir la nouvelle position du tableau 2
-      int newX2 = ObjectGet("FVG_table2", OBJPROP_X);
-      int newY2 = ObjectGet("FVG_table2", OBJPROP_Y);
+      double newX2 = ObjectGetDouble(0, "FVG_table2", OBJPROP_X);
+      double newY2 = ObjectGetDouble(0, "FVG_table2", OBJPROP_Y);
 
       // Mettre à jour la position du texte 2
-      ObjectMove("FVG_text2", newX2 + 10, newY2 + 20);
+      ObjectMove("FVG_text2", 0, newX2 + 10, newY2 + 20);
 
       // Obtenir la nouvelle position du tableau 3
-      int newX3 = ObjectGet("FVG_table3", OBJPROP_X);
-      int newY3 = ObjectGet("FVG_table3", OBJPROP_Y);
+      double newX3 = ObjectGetDouble(0, "FVG_table3", OBJPROP_X);
+      double newY3 = ObjectGetDouble(0, "FVG_table3", OBJPROP_Y);
 
       // Mettre à jour la position du texte 3
-      ObjectMove("FVG_text3", newX3 + 10, newY3 + 20);
+      ObjectMove("FVG_text3", 0, newX3 + 10, newY3 + 20);
 
       // Obtenir la nouvelle position du tableau 4
-      int newX4 = ObjectGet("FVG_table4", OBJPROP_X);
-      int newY4 = ObjectGet("FVG_table4", OBJPROP_Y);
+      double newX4 = ObjectGetDouble(0, "FVG_table4", OBJPROP_X);
+      double newY4 = ObjectGetDouble(0, "FVG_table4", OBJPROP_Y);
 
       // Mettre à jour la position du texte 4
-      ObjectMove("FVG_text4", newX4 + 10, newY4 + 20);
+      ObjectMove("FVG_text4", 0, newX4 + 10, newY4 + 20);
    }
 }
 
