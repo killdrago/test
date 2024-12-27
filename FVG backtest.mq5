@@ -1,4 +1,4 @@
-﻿//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //|                                                        MonEA.mq5 |
 //|                              Copyright 2024 Votre Nom            |
 //|                              https://www.votre-site.com          |
@@ -11,6 +11,10 @@
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Arrays\ArrayInt.mqh>
+
+// Deplacement du texte avec le tableau 
+#define OBJPROP_X 1
+#define OBJPROP_Y 2
 
 // Définitions des objets pour l'affichage
 #define TRIGGER_OBJECT_NAME "TS_Trigger_Level"
@@ -2327,36 +2331,15 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
 {
    if (id == CHARTEVENT_OBJECT_DRAG)
    {
-      // Obtenir la nouvelle position du tableau
-      double newX = ObjectGetDouble(0, "FVG_table", OBJPROP_X);
-      double newY = ObjectGetDouble(0, "FVG_table", OBJPROP_Y);
-
-      // Mettre à jour la position du texte
-      ObjectMove("FVG_text", 0, newX + 10, newY + 20);
-
-      // Obtenir la nouvelle position du tableau 2
-      double newX2 = ObjectGetDouble(0, "FVG_table2", OBJPROP_X);
-      double newY2 = ObjectGetDouble(0, "FVG_table2", OBJPROP_Y);
-
-      // Mettre à jour la position du texte 2
-      ObjectMove("FVG_text2", 0, newX2 + 10, newY2 + 20);
-
-      // Obtenir la nouvelle position du tableau 3
-      double newX3 = ObjectGetDouble(0, "FVG_table3", OBJPROP_X);
-      double newY3 = ObjectGetDouble(0, "FVG_table3", OBJPROP_Y);
-
-      // Mettre à jour la position du texte 3
-      ObjectMove("FVG_text3", 0, newX3 + 10, newY3 + 20);
-
-      // Obtenir la nouvelle position du tableau 4
-      double newX4 = ObjectGetDouble(0, "FVG_table4", OBJPROP_X);
-      double newY4 = ObjectGetDouble(0, "FVG_table4", OBJPROP_Y);
-
-      // Mettre à jour la position du texte 4
-      ObjectMove("FVG_text4", 0, newX4 + 10, newY4 + 20);
+      // Obtenir la liste des objets sur le graphique
+      int objects = ObjectsTotal();
+      for (int i = 0; i < objects; i++)
+      {
+         string objectName = ObjectName(i);
+         Print(objectName);
+      }
    }
 }
-
 //+------------------------------------------------------------------+
 //| Fin du code                                                      |
-//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+     
