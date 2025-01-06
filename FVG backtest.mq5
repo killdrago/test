@@ -2593,12 +2593,13 @@ bool OpenPositionWithTrailingSL(string symbol, CrossSignal signal, double volume
 //+------------------------------------------------------------------+
 bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
 {
-   if (IsPositionOpen(symbol))
+   if (PositionSelect(_Symbol) == true)
    {
       Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
       return false;
    }
-     
+   else
+   {
    double sl = 0.0, tp = 0.0;
    double slPercentage = 0.0, tpPercentage = 0.0, slPoints = 0.0, tpPoints = 0.0;
 
@@ -2609,7 +2610,7 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
       Print("Position ouverte avec Stop Loss Classique pour ", symbol);
       return true;
    }
-      
+   }
    return false;
 }
 //+------------------------------------------------------------------+
