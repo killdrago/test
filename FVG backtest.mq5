@@ -1328,55 +1328,37 @@ void DisplayIchimokuOnChart()
 {
    string symbol = Symbol();
    ENUM_TIMEFRAMES timeframe = TrendTimeframe;
-   ENUM_TIMEFRAMES chartTimeframe = Period(); // Timeframe du graphique
 
-   ObjectsDeleteAll(0, "Ichimoku_Cloud*");
+   // Supprimer les objets existants pour éviter les doublons
+   ObjectsDeleteAll(0, "Ichimoku*");
 
+   // Obtenir les buffers Ichimoku (uniquement Senkou Span A et B)
    double senkouSpanA[], senkouSpanB[];
+
    ArraySetAsSeries(senkouSpanA, true);
    ArraySetAsSeries(senkouSpanB, true);
 
-   int ichimokuHandle = iIchimoku(symbol, timeframe, 9, 26, 52);
-   if (ichimokuHandle < 0) return;
+   int ichimokuHandle = iIchimoku(symbol, timeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
 
-   if (CopyBuffer(ichimokuHandle, 2, 0, 200 + 26, senkouSpanA) <= 0 ||
-       CopyBuffer(ichimokuHandle, 3, 0, 200 + 26, senkouSpanB) <= 0) return;
-
-   for (int i = 26; i < ArraySize(senkouSpanA) - 1; i++)
+   if (CopyBuffer(ichimokuHandle, 2, 0, 100, senkouSpanA) <= 0 ||
+       CopyBuffer(ichimokuHandle, 3, 0, 100, senkouSpanB) <= 0)
    {
-      if (senkouSpanA[i] != EMPTY_VALUE && senkouSpanB[i] != EMPTY_VALUE)
+       Print("Erreur lors de la copie des données Ichimoku pour l'affichage sur le graphique");
+      return;
+   }
+
+   // Afficher le nuage Ichimoku (Senkou Span A et B)
+   for (int i = 0; i < ArraySize(senkouSpanA) - 1; i++)
+   {
+      if (senkouSpanA[i] != EMPTY_VALUE && senkouSpanA[i + 1] != EMPTY_VALUE &&
+          senkouSpanB[i] != EMPTY_VALUE && senkouSpanB[i + 1] != EMPTY_VALUE)
       {
-         color cloudColor = (senkouSpanA[i] > senkouSpanB[i]) ? clrLimeGreen : clrRed;
-
-         // Calculer les temps en fonction du timeframe du graphique
-         datetime time1 = iTime(symbol, timeframe, i - 26);
-         datetime time2 = iTime(symbol, timeframe, i - 25);
-
-         // Ajuster les temps pour le timeframe du graphique
-         time1 = TimeToNearest(chartTimeframe, time1);
-         time2 = TimeToNearest(chartTimeframe, time2);
-
-
-         // Senkou Span A
-         string objNameA = "Ichimoku_Cloud_A_" + (string)(i - 26);
-         ObjectCreate(0, objNameA, OBJ_TREND, 0, time1, senkouSpanA[i], time2, senkouSpanA[i + 1]);
-         ObjectSetInteger(0, objNameA, OBJPROP_COLOR, cloudColor);
-         ObjectSetInteger(0, objNameA, OBJPROP_BACK, true);
-
-         // Senkou Span B
-         string objNameB = "Ichimoku_Cloud_B_" + (string)(i - 26);
-         ObjectCreate(0, objNameB, OBJ_TREND, 0, time1, senkouSpanB[i], time2, senkouSpanB[i + 1]);
-         ObjectSetInteger(0, objNameB, OBJPROP_COLOR, cloudColor);
-         ObjectSetInteger(0, objNameB, OBJPROP_BACK, true);
+         ObjectCreate(0, "Ichimoku_Cloud_" + (string)i, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i), MathMin(senkouSpanA[i], senkouSpanB[i]), iTime(symbol, timeframe, i + 1), MathMax(senkouSpanA[i + 1], senkouSpanB[i + 1]));
+         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_COLOR, (senkouSpanA[i] > senkouSpanB[i]) ? clrLimeGreen : clrRed);
+         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_FILL, true);
+         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_BACK, true);
       }
    }
-}
-
-
-// Fonction utilitaire pour arrondir le temps au timeframe le plus proche
-datetime TimeToNearest(ENUM_TIMEFRAMES timeframe, datetime time)
-{
-   return iTime(Symbol(), timeframe, iBarShift(Symbol(), timeframe, time, true));
 }
 
 //+------------------------------------------------------------------+
