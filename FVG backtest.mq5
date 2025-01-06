@@ -12,10 +12,6 @@
 #include <Trade\PositionInfo.mqh>
 #include <Arrays\ArrayInt.mqh>
 
-// Deplacement du texte avec le tableau 
-#define OBJPROP_X 1
-#define OBJPROP_Y 2
-
 // Définitions des objets pour l'affichage
 #define TRIGGER_OBJECT_NAME "TS_Trigger_Level"
 #define FOLLOWER_OBJECT_NAME "TS_Follower_Level"
@@ -27,20 +23,38 @@
 #define LABEL_SL_SUIVEUR          "LBL_SLSuiveur"
 #define LABEL_NOUVEAUX_SL         "LBL_NouveauxSL"
 
-CTrade         trade;
-CPositionInfo  position;
+// Structure pour stocker les informations de trade
+struct TradeInfo {
+    ulong       ticket;
+    string      symbol;
+    ENUM_POSITION_TYPE type;
+    double      openPrice;
+    double      lotSize;
+    double      sl;          // Prix du Stop Loss
+    double      tp;          // Prix du Take Profit
+    double      slPoints;    // Nombre de points pour le SL
+    double      tpPoints;    // Nombre de points pour le TP
+    double      slPercentage; // Pourcentage d'équité pour le SL
+    double      tpPercentage; // Pourcentage d'équité pour le TP
+    bool        trailingSLActivated;
+    double      trailingSL_Level;
+};
+
+TradeInfo openTrades[];
+
+CTrade trade;
+CPositionInfo position;
 
 //--- Paramètres d'entrée
-input string  magic_settings         = "=== Gestion du Magic Number ===";
-input bool    UseMagicNumber         = true;             // False = Manuel + Tous magic
-input int     MagicNumber            = 123456;           // Magic Number
+input string  magic_settings          = "=== Gestion du Magic Number ===";
+input bool    UseMagicNumber          = true;             // False = Manuel + Tous magic
+input int     MagicNumber             = 123456;           // Magic Number
 
-input string  display_settings       = "=== Paramètres d'affichage ===";
+input string  display_settings        = "=== Paramètres d'affichage ===";
+input bool    DisplayTable            = true; // Afficher le tableau d'informations
 input int     TextPosition            = 4;               // 1=Haut gauche, 2=Haut Droite, 3=Bas Gauche, 4=Bas Droite
-input bool    DisplayFrameContinuously = true; // Afficher le cadre continuellement
-input color   FrameBackgroundColor   = clrWhiteSmoke; // Couleur de fond du cadre
-input color   FrameBorderColor       = clrBlack;      // Couleur de la bordure du cadre
 input color   TextColor               = clrBlack;        // Couleur de tous les textes
+input color   TableFondColor        = clrYellow;       // Couleur de fond du tableau
 
 input string  martingale_settings     = "=== Paramètres des lots et martingale ===";
 enum LotType {LotFixe, Martingale};
@@ -101,21 +115,21 @@ enum StopType {SL_Classique, SL_Suiveur, GridTrading};
 input StopType StopLossType           = SL_Classique;    // Type de Stop Loss
 
 input string  sl_classique_settings   = "--- Paramètres SL Classique ---";
-input double  StopLossCurrency        = 1.0;             // Stop Loss en devise (par exemple, 1 €)
-input double  TakeProfitCurrency      = 10.0;            // Take Profit en devise (par exemple, 10 €)
+input double  StopLossCurrency        = 1.0;             // Stop Loss en devise (0 pour aucun SL)
+input double  TakeProfitCurrency      = 10.0;            // Take Profit en devise (0 pour aucun TP)
 
 input string  sl_suiveur_settings     = "=== Paramètres du SL suiveur ===";
 input string  reglageslsuiveur        = "--- réglage SLsuiveur ---";
-input double  InpSeuilDeclenchement   = 1.5;             // Seuil de déclenchement en points
+input double  InpSeuilDeclenchement   = 1.5;             // Seuil de déclenchement en devise
 input bool    InpActivationRespiration = true;           // Activation de la respiration
-input double  InpRespiration          = 1.0;             // Respiration pour le seuil de déclenchement
-input double  InpRespirationSL        = 0.5;             // Respiration pour le SL suiveur
-input double  InpSLsuiveur            = 30.0;            // Distance du SL suiveur en points
+input double  InpRespiration          = 1.0;             // Respiration pour le seuil de déclenchement en devise
+input double  InpRespirationSL        = 0.5;             // Respiration pour le SL suiveur en devise
+input double  InpSLsuiveur            = 30.0;            // Distance du SL suiveur en devises
 
 //--- Paramètres pour le Grid Trading
 input string  grid_settings           = "--- Paramètres du Grid Trading ---";
-input double  GridTakeProfitPoints    = 100;             // Take Profit en points pour chaque position du grid
-input double  GridDistancePoints      = 50;              // Distance en points pour l'ouverture d'une nouvelle position du grid
+input double  GridTakeProfitPoints    = 100;             // Take Profit en devise
+input double  GridDistancePoints      = 50;              // Distance nouvelle position du grid en devise
 input int     GridMaxOrders           = 5;               // Nombre maximum de positions dans le grid
 
 //--- Variables pour le SL suiveur
@@ -158,66 +172,32 @@ enum CrossSignal { Achat, Vente, Aucun };
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    // Initialiser l'objet de trading avec gestion du Magic Number
-    if (UseMagicNumber)
+    // Initialisation des handles pour Ichimoku
+    int ichimokuHandle = iIchimoku(Symbol(), TrendTimeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
+    if (ichimokuHandle == INVALID_HANDLE)
     {
-        trade.SetExpertMagicNumber(MagicNumber);
-    }
-    else
-    {
-        trade.SetExpertMagicNumber(0);
+        Print("Erreur lors de l'initialisation de Ichimoku pour ", Symbol());
+        return INIT_FAILED;
     }
     
-    trade.SetDeviationInPoints(MaxSlippagePoints);
-    trade.SetTypeFilling(ORDER_FILLING_FOK);
-    trade.SetAsyncMode(false);
+    ArrayResize(Ichimoku_Handle, 1);
+    Ichimoku_Handle[0] = ichimokuHandle;
 
-    // Construire la liste des symboles actifs
-    BuildActiveSymbolList();
+    // Initialisation des handles pour les moyennes mobiles
+    ArrayResize(MA_Handle1, 1);
+    ArrayResize(MA_Handle2, 1);
+    
+    MA_Handle1[0] = iMA(Symbol(), TrendTimeframe, MA_Period1, 0, MA_Method, MA_Price);
+    MA_Handle2[0] = iMA(Symbol(), TrendTimeframe, MA_Period2, 0, MA_Method, MA_Price);
 
-    // Initialiser les handles des indicateurs
-    InitializeIndicatorHandles();
-
-    // Initialiser les tentatives de martingale
-    ArrayResize(MartingaleAttempts, ArraySize(ActiveSymbols));
-    ArrayInitialize(MartingaleAttempts, 0);
-
-    // Initialiser les variables du SL suiveur
-    adjusted_InpRespiration = InpRespiration;
-    adjusted_InpRespirationSL = InpRespirationSL;
-    adjusted_InpSLsuiveur = InpSLsuiveur;
-    adjusted_InpSeuilDeclenchement = InpSeuilDeclenchement;
-
-    // Nettoyer les objets graphiques existants
-    ObjectDelete(0, TRIGGER_OBJECT_NAME);
-    ObjectDelete(0, FOLLOWER_OBJECT_NAME);
-
-    // Supprimer les labels existants
-    ObjectDelete(0, LABEL_RESPIRATION_STATUS);
-    ObjectDelete(0, LABEL_SEUIL_DECLENCHEMENT);
-    ObjectDelete(0, LABEL_SL_A);
-    ObjectDelete(0, LABEL_NOUVEAUX_SL);
-    ObjectDelete(0, LABEL_SL_SUIVEUR);
-
-    // Réinitialiser les variables globales
-    seuil_declenche_actif = false;
-    sl_level = 0.0;
-    position_price_open = 0.0;
-    trailingSL = 0.0;
-    current_ticket = 0;
-
-    // Mettre à jour les positions existantes immédiatement après l'initialisation
-    UpdateExistingPositions();
-
-    // Vérifier si l'initialisation est réussie
-    if (ArraySize(ActiveSymbols) == 0)
+    if (MA_Handle1[0] == INVALID_HANDLE || MA_Handle2[0] == INVALID_HANDLE)
     {
-        Print("Erreur: Aucun symbole actif trouvé");
+        Print("Erreur lors de l'initialisation des moyennes mobiles pour ", Symbol());
         return INIT_FAILED;
     }
 
-    Print("Expert Advisor initialisé avec succès");
-    return (INIT_SUCCEEDED);
+    Print("Handles initialisés avec succès");
+    return INIT_SUCCEEDED;
 }
 
 //+------------------------------------------------------------------+
@@ -225,45 +205,18 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   // Nettoyer le cadre lors de la déinitialisation
-    CleanupDisplayFrame(); 
-   
-    // Libérer les handles des indicateurs
-    ReleaseIndicatorHandles();
+   // Nettoyer les objets graphiques
+   CleanupLabels(); // Appel à la fonction de nettoyage des labels
 
-    // Nettoyer les objets graphiques
-    ObjectDelete(0, TRIGGER_OBJECT_NAME);
-    ObjectDelete(0, FOLLOWER_OBJECT_NAME);
+   // Supprimer d'autres objets spécifiques si nécessaire
+   ObjectDelete(0, TRIGGER_OBJECT_NAME);
+   ObjectDelete(0, FOLLOWER_OBJECT_NAME);
 
-    // Supprimer les labels
-    ObjectDelete(0, LABEL_RESPIRATION_STATUS);
-    ObjectDelete(0, LABEL_SEUIL_DECLENCHEMENT);
-    ObjectDelete(0, LABEL_SL_A);
-    ObjectDelete(0, LABEL_NOUVEAUX_SL);
-    ObjectDelete(0, LABEL_SL_SUIVEUR);
+   // Supprimer le commentaire du graphique
+   Comment("");
 
-    // Supprimer les objets des indicateurs
-    ObjectsDeleteAll(0, "Ichimoku*");
-    ObjectsDeleteAll(0, "MA*");
-
-    // Supprimer le commentaire du graphique
-    Comment("");
-
-    // Afficher le message de déinitialisation avec la raison
-    string deinit_reason;
-    switch(reason)
-    {
-        case REASON_PROGRAM:     deinit_reason = "Programme arrêté"; break;
-        case REASON_REMOVE:      deinit_reason = "Expert retiré du graphique"; break;
-        case REASON_RECOMPILE:   deinit_reason = "Programme recompilé"; break;
-        case REASON_CHARTCHANGE: deinit_reason = "Symbole ou période changé"; break;
-        case REASON_CHARTCLOSE:  deinit_reason = "Graphique fermé"; break;
-        case REASON_PARAMETERS:  deinit_reason = "Paramètres modifiés"; break;
-        case REASON_ACCOUNT:     deinit_reason = "Autre compte activé"; break;
-        default:                 deinit_reason = "Autre raison";
-    }
-    
-    Print("Expert Advisor déinitialisé - Raison: ", deinit_reason);
+   // Afficher le message de déinitialisation
+   Print("Expert Advisor déinitialisé");
 }
 
 //+------------------------------------------------------------------+
@@ -271,34 +224,8 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   // Vérifier les conditions de marché
-   if (!IsMarketConditionsSuitable())
-      return;
 
-   datetime currentTime = TimeCurrent();
-
-   // Vérifier si nous sommes sur une nouvelle minute
-   if (currentTime > lastMinuteChecked + 60)
-   {
-      isNewMinute = true;
-      lastMinuteChecked = currentTime;
-   }
-   else
-   {
-      isNewMinute = false;
-   }
-
-   // Mettre à jour les positions existantes
-   UpdateExistingPositions();
-
-   // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
-   if (!isNewMinute)
-      return;
-
-   // Vérifier les signaux et ouvrir des positions si nécessaire
-   CheckForNewSignals();
-
-   // Afficher les indicateurs sur le graphique si demandé
+      // Afficher les indicateurs sur le graphique si demandé
    if (DisplayOnChart)
    {
       if (TrendMethodChoice == Ichimoku)
@@ -310,9 +237,52 @@ void OnTick()
          DisplayMAOnChart();
       }
    }
+   // Mettre à jour l'affichage (tableau d'informations, lignes horizontales, etc.)
+   if (DisplayTable)
+   {
+      DrawDisplayFrame();
+   }
+   
+   // Vérifier les conditions de marché
+   if (!IsMarketConditionsSuitable())
+   {
+      Print("Conditions de marché non favorables.");
+      return;
+   }
 
-   // Mettre à jour l'affichage du cadre
-   DrawDisplayFrame();
+   // Vérifier si nous sommes sur une nouvelle minute
+   datetime currentTime = TimeCurrent();
+   if (currentTime > lastMinuteChecked + 60)
+   {
+      isNewMinute = true;
+      lastMinuteChecked = currentTime;
+   }
+   else
+   {
+      isNewMinute = false;
+   }
+
+   // Mettre à jour les positions existantes (gestion des stops, etc.)
+   UpdateExistingPositions();
+
+   // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
+   if (!isNewMinute)
+   {
+      return; // Ne pas afficher de message, simplement sortir de la fonction
+   }
+
+   // Vérifier les actualités importantes
+   if (UseNewsFilter && IsThereNews(Symbol()))
+   {
+      Print("Actualités importantes détectées, trading évité.");
+      return;
+   }
+   
+   // Vérifier les signaux et ouvrir des positions si nécessaire
+   CheckForNewSignals();
+   
+    
+   
 }
 
 //+------------------------------------------------------------------+
@@ -488,11 +458,10 @@ void InitializeIndicatorHandles()
       // Redimensionner les tableaux pour un seul symbole
       ArrayResize(MA_Handle1, 1);
       ArrayResize(MA_Handle2, 1);
-      ArrayResize(MACD_Handle, 1); // Supprimer si non utilisé ailleurs
       ArrayResize(Ichimoku_Handle, 1);
 
-      // Initialiser les handles en fonction de la stratégie sélectionnée
-      if (Strategy == MA_Crossover || Strategy == RSI_OSOB) // Modifier ici
+      // Initialiser les handles en fonction de la stratégie choisie
+      if (Strategy == MA_Crossover || Strategy == RSI_OSOB)
       {
          MA_Handle1[0] = iMA(symbol, _Period, MA_Period1, 0, MA_Method, MA_Price);
          MA_Handle2[0] = iMA(symbol, _Period, MA_Period2, 0, MA_Method, MA_Price);
@@ -510,27 +479,16 @@ void InitializeIndicatorHandles()
          }
       }
 
-      // Initialiser le handle pour la stratégie RSI
-      if (Strategy == RSI_OSOB)
+      // Initialiser le handle pour la tendance
+      if (TrendMethodChoice == Ichimoku)
       {
-         MACD_Handle[0] = iRSI(symbol, _Period, RSI_Period, PRICE_CLOSE); // Utiliser MACD_Handle pour RSI
-         if (MACD_Handle[0] == INVALID_HANDLE)
+         Ichimoku_Handle[0] = iIchimoku(symbol, TrendTimeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
+         if (Ichimoku_Handle[0] == INVALID_HANDLE)
          {
-            Print("Erreur d'initialisation du handle RSI pour ", symbol);
-            MACD_Handle[0] = INVALID_HANDLE;
+            Print("Erreur d'initialisation du handle Ichimoku pour la tendance sur ", symbol);
+            Ichimoku_Handle[0] = INVALID_HANDLE;
          }
       }
-
-      // Initialiser le handle pour la tendance
-if (TrendMethodChoice == Ichimoku)
-{
-   Ichimoku_Handle[0] = iIchimoku(symbol, TrendTimeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
-   if (Ichimoku_Handle[0] == INVALID_HANDLE)
-   {
-      Print("Erreur d'initialisation du handle Ichimoku pour la tendance sur ", symbol);
-      Ichimoku_Handle[0] = INVALID_HANDLE;
-   }
-}
    }
    else
    {
@@ -539,7 +497,6 @@ if (TrendMethodChoice == Ichimoku)
       {
          ArrayResize(MA_Handle1, totalSymbols);
          ArrayResize(MA_Handle2, totalSymbols);
-         ArrayResize(MACD_Handle, totalSymbols); // Supprimer si non utilisé ailleurs
          ArrayResize(Ichimoku_Handle, totalSymbols);
 
          for (int i = 0; i < totalSymbols; i++)
@@ -547,7 +504,7 @@ if (TrendMethodChoice == Ichimoku)
             string symbol = ActiveSymbols[i];
 
             // Initialiser les handles en fonction de la stratégie sélectionnée
-            if (Strategy == MA_Crossover || Strategy == RSI_OSOB) // Modifier ici
+            if (Strategy == MA_Crossover || Strategy == RSI_OSOB)
             {
                MA_Handle1[i] = iMA(symbol, _Period, MA_Period1, 0, MA_Method, MA_Price);
                MA_Handle2[i] = iMA(symbol, _Period, MA_Period2, 0, MA_Method, MA_Price);
@@ -562,17 +519,6 @@ if (TrendMethodChoice == Ichimoku)
                {
                   Print("Erreur d'initialisation du handle MA2 pour ", symbol);
                   MA_Handle2[i] = INVALID_HANDLE;
-               }
-            }
-
-            // Initialiser le handle pour la stratégie RSI
-            if (Strategy == RSI_OSOB)
-            {
-               MACD_Handle[i] = iRSI(symbol, _Period, RSI_Period, PRICE_CLOSE); // Utiliser MACD_Handle pour RSI
-               if (MACD_Handle[i] == INVALID_HANDLE)
-               {
-                  Print("Erreur d'initialisation du handle RSI pour ", symbol);
-                  MACD_Handle[i] = INVALID_HANDLE;
                }
             }
 
@@ -597,13 +543,13 @@ if (TrendMethodChoice == Ichimoku)
             }
          }
       }
-     else
+      else
       {
          Print("Erreur: Aucun symbole actif trouvé pour initialiser les handles des indicateurs.");
          return;
       }
    }
-} 
+}
 
 //+------------------------------------------------------------------+
 //| Fonction pour libérer les handles des indicateurs                |
@@ -612,7 +558,6 @@ void ReleaseIndicatorHandles()
 {
    if (!TradeAllForexPairs && !TradeAllIndices && StringLen(CustomSymbols) == 0)
    {
-      // Libérer les handles pour le symbole actuel
       if (MA_Handle1[0] != INVALID_HANDLE) IndicatorRelease(MA_Handle1[0]);
       if (MA_Handle2[0] != INVALID_HANDLE) IndicatorRelease(MA_Handle2[0]);
       if (Ichimoku_Handle[0] != INVALID_HANDLE) IndicatorRelease(Ichimoku_Handle[0]);
@@ -633,40 +578,73 @@ void ReleaseIndicatorHandles()
 //+------------------------------------------------------------------+
 void CheckForNewSignals()
 {
-   // Vérifier les signaux pour le symbole actuel du graphique
-   string currentSymbol = Symbol();
+   Print("Début de CheckForNewSignals");
 
    // Vérifier les conditions de trading
-   if (!CanTrade(currentSymbol))
+   if (!IsMarketConditionsSuitable())
+   {
+      Print("Conditions de marché non favorables.");
       return;
+   }
+
+   // Vérifier les actualités importantes
+   if (UseNewsFilter && IsThereNews(Symbol()))
+   {
+      Print("Actualités importantes détectées, trading évité.");
+      return;
+   }
 
    // Obtenir la tendance
-   MarketTrend trend = GetMarketTrend(currentSymbol, 0); // Utilisez 0 car il n'y a qu'un seul symbole
+   MarketTrend trend = GetMarketTrend(Symbol(), 0);
 
    // Vérifier le signal selon la stratégie choisie
-   CrossSignal signal = CheckStrategySignal(currentSymbol, 0); // Utilisez 0 car il n'y a qu'un seul symbole
+   CrossSignal signal = CheckStrategySignal(Symbol(), 0);
 
    if (signal != Aucun)
    {
-      // Calculer le volume
-      double volume = CalculateVolume(currentSymbol);
-      if (volume <= 0)
-         return;
+      Print("Signal détecté : ", EnumToString(signal));
 
-      // Ouvrir la position
-      if (signal == Achat && (trend == TrendHaussiere || trend == Indecis))
+      // Calculer le volume
+      double volume = CalculateVolume(Symbol());
+      if (volume <= 0)
       {
-         OpenPosition(currentSymbol, ORDER_TYPE_BUY, volume);
+         Print("Volume invalide pour ", Symbol());
+         return;
       }
-      else if (signal == Vente && (trend == TrendBaissiere || trend == Indecis))
+
+      // Ouvrir la position en fonction du type de Stop Loss
+      if (StopLossType == SL_Classique)
       {
-         OpenPosition(currentSymbol, ORDER_TYPE_SELL, volume);
+         if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+         {
+            Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+         }
+      }
+      else if (StopLossType == SL_Suiveur)
+      {
+         if (OpenPositionWithTrailingSL(Symbol(), signal, volume))
+         {
+            Print("Position ouverte avec Stop Loss Suiveur pour ", Symbol());
+         }
+      }
+      else if (StopLossType == GridTrading)
+      {
+         if (OpenPositionWithGridTrading(Symbol(), signal, volume))
+         {
+            Print("Position ouverte avec Grid Trading pour ", Symbol());
+         }
+      }
+      else
+      {
+         Print("Type de Stop Loss non reconnu.");
       }
    }
+
+   Print("Fin de CheckForNewSignals");
 }
 
 //+------------------------------------------------------------------+
-//| Fonction pour vérifier les nouveaux signaux                      |
+//| Fonction pour vérifier les nouveaux signaux pour le symbole actuel |
 //+------------------------------------------------------------------+
 void CheckForNewSignalsForCurrentSymbol()
 {
@@ -689,14 +667,38 @@ void CheckForNewSignalsForCurrentSymbol()
       if (volume <= 0)
          return;
 
+      // Calculer les niveaux de SL et TP
+      double sl = 0.0, tp = 0.0;
+      double slPercentage = 0.0, tpPercentage = 0.0;
+      double slPoints = 0.0, tpPoints = 0.0;
+
+      if (StopLossType == SL_Classique)
+      {
+         CalculateClassicSLTP(currentSymbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
+      }
+      else if (StopLossType == SL_Suiveur)
+      {
+         CalculateTrailingSLTP(currentSymbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, sl, tp);
+      }
+      else if (StopLossType == GridTrading)
+      {
+         CalculateGridSLTP(currentSymbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
+      }
+
       // Ouvrir la position
       if (signal == Achat && (trend == TrendHaussiere || trend == Indecis))
       {
-         OpenPosition(currentSymbol, ORDER_TYPE_BUY, volume);
+         if (OpenPosition(currentSymbol, ORDER_TYPE_BUY, volume, sl, tp))
+         {
+            Print("Position ACHAT ouverte pour ", currentSymbol, " avec succès.");
+         }
       }
       else if (signal == Vente && (trend == TrendBaissiere || trend == Indecis))
       {
-         OpenPosition(currentSymbol, ORDER_TYPE_SELL, volume);
+         if (OpenPosition(currentSymbol, ORDER_TYPE_SELL, volume, sl, tp))
+         {
+            Print("Position VENTE ouverte pour ", currentSymbol, " avec succès.");
+         }
       }
    }
 }
@@ -750,6 +752,14 @@ MarketTrend GetMarketTrend(string symbol, int index = 0)
       ArraySetAsSeries(senkouSpanA, true);
       ArraySetAsSeries(senkouSpanB, true);
 
+      // Vérifier si l'index est valide pour Ichimoku_Handle
+      if (index < 0 || index >= ArraySize(Ichimoku_Handle))
+      {
+         Print("Erreur: L'index pour Ichimoku_Handle est hors limites.");
+         return Indecis;
+      }
+
+      // Copier les données avec vérification de la réussite
       if (CopyBuffer(Ichimoku_Handle[index], 0, 0, 2, tenkanSen) <= 0 ||
           CopyBuffer(Ichimoku_Handle[index], 1, 0, 2, kijunSen) <= 0 ||
           CopyBuffer(Ichimoku_Handle[index], 2, 0, 2, senkouSpanA) <= 0 ||
@@ -783,6 +793,14 @@ MarketTrend GetMarketTrend(string symbol, int index = 0)
 
       int maTrendHandle = iMA(symbol, TrendTimeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE);
 
+      // Vérifier si le handle est valide
+      if (maTrendHandle == INVALID_HANDLE)
+      {
+         Print("Erreur lors de l'initialisation de la MA pour ", symbol);
+         return Indecis;
+      }
+
+      // Copier les données avec vérification de la réussite
       if (CopyBuffer(maTrendHandle, 0, 0, 1, maTrend) <= 0)
       {
          Print("Erreur lors de la copie des données MA pour ", symbol);
@@ -837,7 +855,16 @@ CrossSignal CheckRSISignal(string symbol, int index = 0)
 
    ArraySetAsSeries(rsi, true);
 
-   if (CopyBuffer(MACD_Handle[index], 0, 0, 2, rsi) <= 0) // Utiliser MACD_Handle pour RSI
+   // Obtenir le handle RSI
+   int rsiHandle = iRSI(symbol, _Period, RSI_Period, PRICE_CLOSE);
+   if (rsiHandle == INVALID_HANDLE)
+   {
+      Print("Erreur: Impossible de créer le handle RSI pour ", symbol);
+      return Aucun;
+   }
+
+   // Copier les données RSI
+   if (CopyBuffer(rsiHandle, 0, 0, 2, rsi) <= 0)
    {
       Print("Erreur lors de la copie des données RSI pour ", symbol);
       return Aucun;
@@ -862,22 +889,24 @@ CrossSignal CheckRSISignal(string symbol, int index = 0)
 CrossSignal CheckMACrossover(string symbol, int index = 0)
 {
    double ma1[], ma2[];
+
    ArraySetAsSeries(ma1, true);
    ArraySetAsSeries(ma2, true);
 
-   if (CopyBuffer(MA_Handle1[index], 0, 0, 3, ma1) <= 0 ||
-       CopyBuffer(MA_Handle2[index], 0, 0, 3, ma2) <= 0)
+   // Copier les données des moyennes mobiles
+   if (CopyBuffer(MA_Handle1[index], 0, 0, 2, ma1) <= 0 ||
+       CopyBuffer(MA_Handle2[index], 0, 0, 2, ma2) <= 0)
    {
       Print("Erreur lors de la copie des données MA pour ", symbol);
       return Aucun;
    }
 
-   // Vérifier le croisement
-   if (ma1[1] <= ma2[1] && ma1[0] > ma2[0])
+   // Vérifier le croisement des moyennes mobiles
+   if (ma1[0] > ma2[0] && ma1[1] <= ma2[1])
    {
       return Achat;
    }
-   else if (ma1[1] >= ma2[1] && ma1[0] < ma2[0])
+   else if (ma1[0] < ma2[0] && ma1[1] >= ma2[1])
    {
       return Vente;
    }
@@ -953,25 +982,21 @@ bool IsValidPosition(ulong ticket)
 //+------------------------------------------------------------------+
 //| Fonction de comptage des positions                                |
 //+------------------------------------------------------------------+
-int CountPositions(string symbol = "")
+int CountPositions(string symbol)
 {
-    int count = 0;
-    
-    for(int i = PositionsTotal() - 1; i >= 0; i--)
+    int count = 0; // Initialiser le compteur à 0
+
+    for (int i = 0; i < PositionsTotal(); i++) // Parcourir toutes les positions ouvertes
     {
-        if(!position.SelectByIndex(i))
-            continue;
-            
-        if(symbol != "" && position.Symbol() != symbol)
-            continue;
-            
-        if(UseMagicNumber && position.Magic() != MagicNumber)
-            continue;
-            
-        count++;
+        if (PositionSelect(Symbol())) // Sélectionner la position pour le symbole actuel
+        {
+            if (PositionGetString(POSITION_SYMBOL) == symbol) // Vérifier si le symbole correspond
+            {
+                count++; // Incrémenter si le symbole correspond
+            }
+        }
     }
-    
-    return count;
+    return count; // Retourner le nombre total de positions pour le symbole donné
 }
 
 //+------------------------------------------------------------------+
@@ -1015,20 +1040,45 @@ void OpenNewPosition(string symbol, CrossSignal signal, MarketTrend trend)
       Print("Erreur lors de l'ouverture de la position pour ", symbol, " - Erreur: ", GetLastError());
    }
 }
+
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier si une position est ouverte                |
 //+------------------------------------------------------------------+
 bool IsPositionOpen(string symbol)
 {
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-   {
-      if(position.SelectByIndex(i))
-      {
-         if(position.Symbol() == symbol && position.Magic() == MagicNumber)
-            return true;
-      }
-   }
-   return false;
+    int totalPositions = PositionsTotal();
+    Print("Nombre total de positions : ", totalPositions);
+
+    for (int i = totalPositions - 1; i >= 0; i--)
+    {
+        ulong ticket = PositionGetTicket(i);
+        if (ticket <= 0)
+        {
+            Print("Erreur : Impossible de récupérer le ticket de la position à l'index ", i);
+            continue;
+        }
+
+        if (!PositionSelectByTicket(ticket))
+        {
+            Print("Erreur : Impossible de sélectionner la position avec le ticket ", ticket);
+            continue;
+        }
+
+        string positionSymbol = PositionGetString(POSITION_SYMBOL);
+        ulong positionMagic = PositionGetInteger(POSITION_MAGIC);
+
+        Print("Position trouvée : Symbole = ", positionSymbol, ", Magic = ", positionMagic);
+
+        // Vérifier le symbole et le Magic Number (si activé)
+        if (positionSymbol == symbol && (!UseMagicNumber || positionMagic == MagicNumber))
+        {
+            Print("Une position est déjà ouverte pour ", symbol);
+            return true; // Une position est ouverte pour ce symbole
+        }
+    }
+
+    Print("Aucune position ouverte pour ", symbol);
+    return false; // Aucune position ouverte pour ce symbole
 }
 
 //+------------------------------------------------------------------+
@@ -1174,39 +1224,37 @@ void ManageClassicSL(string symbol)
    if (UseMagicNumber && position.Magic() != MagicNumber)
       return;
 
-   double sl = position.StopLoss();
-   double tp = position.TakeProfit();
-   double lotSize = position.Volume();
+   double lotSize = position.Volume(); // Utiliser le volume de la position existante
+   double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
 
-   // Si le SL ou TP n'est pas défini, le définir
-   if (sl == 0 || tp == 0)
+   // Calculer les niveaux de SL et TP en pips
+   double slPips = NormalizeDouble(StopLossCurrency / (lotSize * pointValue), digits);
+   double tpPips = NormalizeDouble(TakeProfitCurrency / (lotSize * pointValue), digits);
+
+   // Récupérer le prix d'ouverture de la position
+   double openPrice = position.PriceOpen();
+
+   // Calculer les niveaux de SL et TP en prix
+   double slPrice = 0.0;
+   double tpPrice = 0.0;
+
+   if (position.PositionType() == POSITION_TYPE_BUY)
    {
-      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-      double openPrice = position.PriceOpen();
+      slPrice = NormalizeDouble(openPrice - slPips * point, digits);
+      tpPrice = NormalizeDouble(openPrice + tpPips * point, digits);
+   }
+   else if (position.PositionType() == POSITION_TYPE_SELL)
+   {
+      slPrice = NormalizeDouble(openPrice + slPips * point, digits);
+      tpPrice = NormalizeDouble(openPrice - tpPips * point, digits);
+   }
 
-      // Convertir les valeurs en devise en points
-      double slPoints = (position.PositionType() == POSITION_TYPE_BUY) ?
-                        StopLossCurrency / (SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE) * lotSize) / point :
-                        -StopLossCurrency / (SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE) * lotSize) / point;
-
-      double tpPoints = (position.PositionType() == POSITION_TYPE_BUY) ?
-                        TakeProfitCurrency / (SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE) * lotSize) / point :
-                        -TakeProfitCurrency / (SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE) * lotSize) / point;
-
-      // Calculer les niveaux de prix
-      double slPrice = (position.PositionType() == POSITION_TYPE_BUY) ?
-                       openPrice - slPoints * point :
-                       openPrice + slPoints * point;
-
-      double tpPrice = (position.PositionType() == POSITION_TYPE_BUY) ?
-                       openPrice + tpPoints * point :
-                       openPrice - tpPoints * point;
-
-      // Modifier la position
-      if (!ModifyPosition(position.Ticket(), slPrice, tpPrice))
-      {
-         Print("Erreur lors de la modification du SL classique pour ", symbol, ": ", GetLastError());
-      }
+   // Modifier la position si nécessaire
+   if (!ModifyPosition(position.Ticket(), slPrice, tpPrice))
+   {
+      Print("Erreur lors de la modification du SL classique pour ", symbol, ": ", GetLastError());
    }
 }
 
@@ -1215,51 +1263,61 @@ void ManageClassicSL(string symbol)
 //+------------------------------------------------------------------+
 void ManageGridTrading(CPositionInfo &pos, double &gridDistancePercentage, double &gridDistancePoints)
 {
-   // Compter le nombre de positions existantes pour ce symbole
-   int posCount = 0;
-   for (int i = 0; i < PositionsTotal(); i++)
-   {
-      if (position.SelectByIndex(i))
-      {
-         if (position.Symbol() == pos.Symbol())
-         {
-            // Vérifier si le Magic Number doit être utilisé
-            if (!UseMagicNumber || position.Magic() == MagicNumber)
-               posCount++;
-         }
-      }
-   }
-
-   if (posCount >= GridMaxOrders)
-      return;
-
    string symbol = pos.Symbol();
    double lotSize = pos.Volume();
 
-   // Convertir la distance de grille en points
-   double gridDistancePointsCalc = GridDistancePoints / (SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE) * lotSize) / SymbolInfoDouble(symbol, SYMBOL_POINT);
+   // Compter le nombre de positions ouvertes pour ce symbole
+   int posCount = CountPositions(symbol);
 
-   // Calculer la distance de grille en pourcentage de l'équité
-   gridDistancePercentage = ConvertToEquityPercentage(GridDistancePoints);
-
-   // Calculer la distance de grille en points
-   gridDistancePoints = gridDistancePointsCalc;
-
-   if (pos.PositionType() == POSITION_TYPE_BUY)
+   // Vérifier si le nombre de positions est inférieur à la limite maximale
+   if (posCount < GridMaxOrders)
    {
-      if (SymbolInfoDouble(symbol, SYMBOL_ASK) <= pos.PriceOpen() - gridDistancePointsCalc * SymbolInfoDouble(symbol, SYMBOL_POINT))
+      double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+      int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+      double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+
+      // Convertir la distance de grille en points (à partir de la devise)
+      double gridDistanceInPoints = NormalizeDouble(GridDistancePoints / (lotSize * pointValue), digits);
+
+      // Calculer la distance de grille en pourcentage de l'équité
+      gridDistancePercentage = ConvertToEquityPercentage(GridDistancePoints);
+
+      // Vérifier les conditions pour ouvrir une nouvelle position
+      double currentPrice = (pos.PositionType() == POSITION_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_BID) : SymbolInfoDouble(symbol, SYMBOL_ASK);
+      double openPrice = pos.PriceOpen();
+
+      if (pos.PositionType() == POSITION_TYPE_BUY)
       {
-         double volume = CalculateVolume(symbol);
-         OpenPosition(symbol, ORDER_TYPE_BUY, volume);
+         if (currentPrice <= openPrice - gridDistanceInPoints * point)
+         {
+            double volume = CalculateVolume(symbol);
+            double sl, tp, slPercentage, tpPercentage, slPoints, tpPoints;
+            CalculateGridSLTP(symbol, ORDER_TYPE_BUY, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
+
+            if (OpenPosition(symbol, ORDER_TYPE_BUY, volume, 0, tp)) // Pas de SL, uniquement TP
+            {
+               Print("Nouvelle position BUY ouverte dans le Grid Trading pour ", symbol);
+            }
+         }
+      }
+      else if (pos.PositionType() == POSITION_TYPE_SELL)
+      {
+         if (currentPrice >= openPrice + gridDistanceInPoints * point)
+         {
+            double volume = CalculateVolume(symbol);
+            double sl, tp, slPercentage, tpPercentage, slPoints, tpPoints;
+            CalculateGridSLTP(symbol, ORDER_TYPE_SELL, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
+
+            if (OpenPosition(symbol, ORDER_TYPE_SELL, volume, 0, tp)) // Pas de SL, uniquement TP
+            {
+               Print("Nouvelle position SELL ouverte dans le Grid Trading pour ", symbol);
+            }
+         }
       }
    }
-   else if (pos.PositionType() == POSITION_TYPE_SELL)
+   else
    {
-      if (SymbolInfoDouble(symbol, SYMBOL_BID) >= pos.PriceOpen() + gridDistancePointsCalc * SymbolInfoDouble(symbol, SYMBOL_POINT))
-      {
-         double volume = CalculateVolume(symbol);
-         OpenPosition(symbol, ORDER_TYPE_SELL, volume);
-      }
+      Print("Nombre maximum de positions atteint pour ", symbol, " (", GridMaxOrders, "). Pas de nouvelle position ouverte.");
    }
 }
 
@@ -1349,7 +1407,7 @@ double CalculateVolume(string symbol)
 
    if (LotSizeType == LotFixe)
    {
-      lotSize = FixedLotSize;
+      lotSize = FixedLotSize; // Utiliser directement la taille fixe configurée
    }
    else if (LotSizeType == Martingale)
    {
@@ -1374,6 +1432,13 @@ double CalculateVolume(string symbol)
    double minLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
    double maxLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
    lotSize = MathMax(minLot, MathMin(maxLot, lotSize));
+
+   // Arrondir au pas de lot
+   double lotStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   lotSize = NormalizeDouble(MathRound(lotSize / lotStep) * lotStep, 2);
+
+   // Afficher dans le journal pour le débogage
+   Print("Lot calculé pour ", symbol, " : ", lotSize, " (Méthode : ", EnumToString(LotSizeType), ")");
 
    return lotSize;
 }
@@ -1476,237 +1541,353 @@ void SendCloseNotifications(string symbol, double profit)
 }
 
 //+------------------------------------------------------------------+
-//| Fonction pour afficher cadre de donnee                           |
+//| Fonction pour déplacer le tableau                                |
+//+------------------------------------------------------------------+
+void MoveInfoTable(string symbol, int xDistance, int yDistance)
+{
+   string tableName = "InfoTable_" + symbol;
+
+   if (ObjectFind(0, tableName) != INVALID_HANDLE)
+   {
+      ObjectSetInteger(0, tableName, OBJPROP_XDISTANCE, xDistance);
+      ObjectSetInteger(0, tableName, OBJPROP_YDISTANCE, yDistance);
+   }
+   else
+   {
+      Print("Tableau non trouvé pour ", symbol);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour dessiner le cadre d'affichage                     |
 //+------------------------------------------------------------------+
 void DrawDisplayFrame()
 {
-   // 1) Vérifier l’affichage
-   if(!DisplayFrameContinuously)
-   {
-      string currentSymbol = Symbol();
-      string frameName     = "TableFrame_" + currentSymbol;
-      ObjectDelete(0, frameName + "_Table");
-      for(int i=0; i<14; i++)
-         ObjectDelete(0, frameName + "_Line_" + IntegerToString(i));
-      return;
-   }
+    // Récupérer la taille de la fenêtre du graphique
+    long chartWidth  = ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+    long chartHeight = ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
 
-   // 2) Préparer l’ID
-   string currentSymbol = Symbol();
-   string frameName     = "TableFrame_" + currentSymbol;
+    // Définir les coordonnées X et Y en fonction de TextPosition
+    int xPos = 10;
+    int yPos = 10;
 
-   // Supprimer anciens objets
-   ObjectDelete(0, frameName + "_Table");
-   for(int i=0; i<14; i++)
-      ObjectDelete(0, frameName + "_Line_" + IntegerToString(i));
+    switch (TextPosition)
+    {
+        case 1: xPos = 10;                    yPos = 10;                     break; // Haut gauche
+        case 2: xPos = (int)chartWidth - 320; yPos = 10;                     break; // Haut droit
+        case 3: xPos = 10;                    yPos = (int)chartHeight - 410; break; // Bas gauche
+        case 4: xPos = (int)chartWidth - 320; yPos = (int)chartHeight - 410; break; // Bas droit
+    }
 
-   // Param. du cadre
-   int corner      = CORNER_LEFT_UPPER;
-   int xDistance   = 10;
-   int yDistance   = 10;
-   int tableWidth  = 320; // un peu large
-   int tableHeight = 370;
+    // Espacement vertical entre les lignes
+    int lineSpacing = 20;
 
-   // ------------------------------------------------------------------
-   // (A) Rectangle principal
-   // ------------------------------------------------------------------
-   string tableName = frameName + "_Table";
-   if(!ObjectCreate(0, tableName, OBJ_RECTANGLE, 0, 0, 0))
-   {
-      Print("Erreur création rectangle : ", GetLastError());
-      return;
-   }
+    // Tableau dynamique pour stocker les lignes de texte
+    string lines[];
+    int lineIndex = 0;
 
-   ObjectSetInteger(0, tableName, OBJPROP_CORNER,    corner);
-   ObjectSetInteger(0, tableName, OBJPROP_XDISTANCE, xDistance);
-   ObjectSetInteger(0, tableName, OBJPROP_YDISTANCE, yDistance);
-   ObjectSetInteger(0, tableName, OBJPROP_XSIZE,     tableWidth);
-   ObjectSetInteger(0, tableName, OBJPROP_YSIZE,     tableHeight);
+    // -------------------------------------------------------
+    // SECTION 1 : Informations du compte
+    // -------------------------------------------------------
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = StringFormat("Compte : %s", AccountInfoString(ACCOUNT_NAME));
 
-   // Bordure + fond
-   ObjectSetInteger(0, tableName, OBJPROP_COLOR,   clrBlack); 
-   ObjectSetInteger(0, tableName, OBJPROP_WIDTH,   5);        
-   ObjectSetInteger(0, tableName, OBJPROP_FILL,    true);
-   ObjectSetInteger(0, tableName, OBJPROP_BGCOLOR, ColorToARGB(clrWhiteSmoke, 160));
-   ObjectSetInteger(0, tableName, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, tableName, OBJPROP_HIDDEN,     true);
-   ObjectSetInteger(0, tableName, OBJPROP_ZORDER,     0);
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = StringFormat("Solde : %.2f", AccountInfoDouble(ACCOUNT_EQUITY));
 
-   // ------------------------------------------------------------------
-   // (B) Préparer nos 14 lignes
-   // ------------------------------------------------------------------
-   // Variables fictives / exemple
-   double solde    = AccountInfoDouble(ACCOUNT_EQUITY);
-   double gp       = AccountInfoDouble(ACCOUNT_PROFIT);
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = StringFormat("G/P : %.2f", AccountInfoDouble(ACCOUNT_PROFIT));
 
-   bool   isSLClassiqueActive  = (StopLossType == SL_Classique);
-   bool   isGridTradingActive  = (StopLossType == GridTrading);
-   bool   isSLSuiveurActive    = (StopLossType == SL_Suiveur);
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = StringFormat("Valeur du point : %.2f", SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_VALUE));
 
-   double slEur = 100.0, slPts = 35.0, slPct = 2.5;
-   double tpEur = 200.0, tpPts = 70.0, tpPct = 5.0;
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = StringFormat("Marge utilisée : %.2f", AccountInfoDouble(ACCOUNT_MARGIN));
 
-   // Grid
-   int    numberOfPositions = 0; // exemple
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = StringFormat("Marge restante : %.2f", AccountInfoDouble(ACCOUNT_FREEMARGIN));
 
-   double usedMargin  = AccountInfoDouble(ACCOUNT_MARGIN);
-   double freeMargin  = AccountInfoDouble(ACCOUNT_FREEMARGIN);
+    int totalPositions = CountPositions(Symbol());
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = StringFormat("Position total : %d", totalPositions);
 
-   // SL suiveur
-   double suiveurEur       = 120.0, suiveurPts       = 40.0, suiveurPct       = 3.0;
-   double respirationEur   = 10.0,  respirationPts   = 3.0,  respirationPct   = 0.8;
-   double trailingSLEur    = 150.0, trailingSLPts    = 50.0, trailingSLPct    = 3.5;
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = "-------------------------------------------";
 
-   // Les 14 lignes (index 0..13)
-   string lines[14];
+    // -------------------------------------------------------
+    // SECTION 2 : SL classique et TP
+    // -------------------------------------------------------
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = StringFormat("SL classique : (%s)", (StopLossType == SL_Classique) ? "True" : "False");
 
-   // [0] : Nom du compte + Solde + G/P, sur la même ligne
-   lines[0] = StringFormat("Compte : %s | Solde => %.2f | G/P => %.2f", 
-                AccountInfoString(ACCOUNT_NAME), solde, gp);
-   
-   // [1] : (Ligne vide entre solde et SL classique)
-   lines[1] = "";
+    // Récupération du SL / TP / prix d'ouverture / lot t
+    double sl        = GetCurrentSL(Symbol());
+    double tp        = GetCurrentTP(Symbol());
+    double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+    double lotSize   = PositionGetDouble(POSITION_VOLUME);
 
-   // [2] : SL classique (True/False)
-   lines[2] = StringFormat("SL classique : (%s)", isSLClassiqueActive ? "True" : "False");
+    // Calcul pour le SL
+    double slPoints     = PointsDifference(Symbol(), openPrice, sl); 
+    double slCurrency   = ConvertPointsToCurrency(Symbol(), slPoints, lotSize);
+    double slPercentage = EquityPercentage(slCurrency);
 
-   // [3] : SL placer a…
-   lines[3] = StringFormat("SL placer a : %.2f€ / %.2fpts / %.2f%%", slEur, slPts, slPct);
+    // Calcul pour le TP
+    double tpPoints     = PointsDifference(Symbol(), openPrice, tp);
+    double tpCurrency   = ConvertPointsToCurrency(Symbol(), tpPoints, lotSize);
+    double tpPercentage = EquityPercentage(tpCurrency);
 
-   // [4] : TP placer a…
-   lines[4] = StringFormat("TP placer a : %.2f€ / %.2fpts / %.2f%%", tpEur, tpPts, tpPct);
+    // Affichage du SL classique
+    if (sl > 0.0)
+    {
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = StringFormat(
+            "SL placé à : %.5f || %.0f points || %.2f%% || %.2f%s",
+            sl, slPoints, slPercentage,
+            slCurrency, AccountInfoString(ACCOUNT_CURRENCY)
+        );
+    }
+    else
+    {
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "SL placé à : 0.0 || 0 points || 0% || 0.00";
+    }
 
-   // [5] : (Ligne vide entre TP et Grid Trading)
-   lines[5] = "";
+    // Affichage du TP classique uniquement si SL_Classique est utilisé
+    if (StopLossType == SL_Classique)
+    {
+        if (tp > 0.0)
+        {
+            ArrayResize(lines, lineIndex + 1);
+            lines[lineIndex++] = StringFormat(
+                "TP placé à : %.5f || %.0f points || %.2f%% || %.2f%s",
+                tp, tpPoints, tpPercentage,
+                tpCurrency, AccountInfoString(ACCOUNT_CURRENCY)
+            );
+        }
+        else
+        {
+            ArrayResize(lines, lineIndex + 1);
+            lines[lineIndex++] = "TP placé à : 0.0 || 0 points || 0% || 0.00";
+        }
+    }
+    else
+    {
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "TP placé à : 0.0 || 0 points || 0% || 0.00";
+    }
 
-   // [6] : Grid trading (True/False)
-   lines[6] = StringFormat("Grid trading : (%s)", isGridTradingActive ? "True" : "False");
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = "-------------------------------------------";
 
-   // [7] : G/P du compte (MAJ éventuelle toutes les 2s si vous gérez ça dans OnTick).
-   lines[7] = StringFormat("G/P actuel (maj 2s) => %.2f", gp);
+    // -------------------------------------------------------
+    // SECTION 3 : Grid trading
+    // -------------------------------------------------------
+    if (StopLossType == GridTrading)
+    {
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = StringFormat("Grid trading : (%s)", (StopLossType == GridTrading) ? "True" : "False");
 
-   // [8] : Nombre de positions => numberOfPositions (mettre "0" si inactif)
-   if(!isGridTradingActive || numberOfPositions == 0)
-      lines[8] = "Nombre de positions : 0";
-   else
-      lines[8] = StringFormat("Nombre de positions : %d", numberOfPositions);
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = StringFormat("Prochaine POS en point : %.2f", GridDistancePoints);
 
-   // [9] : Marge utilisée
-   lines[9] = StringFormat("Marge utilisée : %.2f", usedMargin);
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = StringFormat("Nb max de POS : %d", GridMaxOrders);
+    }
+    else
+    {
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = StringFormat("Grid trading : (%s)", (StopLossType == GridTrading) ? "True" : "False");
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Grid trading non utilisé";
+    }
 
-   // [10] : Marge restante
-   lines[10] = StringFormat("Marge restante : %.2f", freeMargin);
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = "-------------------------------------------";
 
-   // [11] : (Ligne vide entre marge restante et SL suiveur)
-   lines[11] = "";
+    // -------------------------------------------------------
+    // SECTION 4 : SL suiveur
+    // -------------------------------------------------------
+    ArrayResize(lines, lineIndex + 1);
+    lines[lineIndex++] = StringFormat("SL suiveur : (%s)", (StopLossType == SL_Suiveur) ? "True" : "False");
 
-   // [12..13] : SL suiveur
-   if(!isSLSuiveurActive)
-   {
-      lines[12] = "SL suiveur : (False)";
-      lines[13] = "Respiration : 0€ / 0pts / 0%";
-      // Si vous devez encore afficher 2 lignes (Seuil, SL placer a)
-      // vous pouvez incrémenter la taille de lines[] ou répartir autrement
-   }
-   else
-   {
-      if(!seuil_declenche_actif)
-      {
-         // Avant déclenchement
-         lines[12] = "SL suiveur : (True)";
-         lines[13] = StringFormat("Respiration : %.2f€ / %.2fpts / %.2f%%", 
-                                  respirationEur, respirationPts, respirationPct);
-         // Si vous avez besoin de plus de lignes, augmentez la taille du tableau
-         // ou remplacez line[13] par un bloc plus détaillé.
-      }
-      else
-      {
-         // Après déclenchement
-         lines[12] = StringFormat("SLSuiveur déclencher a : %.2f€ / %.2fpts / %.2f%%",
-                                   suiveurEur, suiveurPts, suiveurPct);
-         lines[13] = StringFormat("SL suiveur placer a : %.2f€ / %.2fpts / %.2f%%",
-                                   trailingSLEur, trailingSLPts, trailingSLPct);
-      }
-   }
+    if (StopLossType != SL_Suiveur)
+    {
+        // SL suiveur non utilisé => tout à zéro
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Seuil de déclenchement : 0.00000";
 
-   // ------------------------------------------------------------------
-   // (C) Créer les labels
-   // ------------------------------------------------------------------
-   int baseYoffset = yDistance + 20;
-   int lineSpacing = 20; // Espacement vertical
-   int textXOffset = xDistance + 10;
-   color textColor = clrBlack;
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Respiration pour seuil : 0.00000";
 
-   for(int i=0; i<14; i++)
-   {
-      string labelName = frameName + "_Line_" + IntegerToString(i);
-      if(!ObjectCreate(0, labelName, OBJ_LABEL, 0, 0, 0))
-      {
-         Print("Erreur création label #", i, " : ", GetLastError());
-         continue;
-      }
-      ObjectSetInteger(0, labelName, OBJPROP_CORNER,    corner);
-      ObjectSetInteger(0, labelName, OBJPROP_XDISTANCE, textXOffset);
-      ObjectSetInteger(0, labelName, OBJPROP_YDISTANCE, baseYoffset + i*lineSpacing);
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "SL placé à : 0.00000 || 0 points || 0% || 0.00";
+    }
+    else
+    {
+        // SL suiveur activé
+        if (!seuil_declenche_actif)
+        {
+            // Pas encore déclenché
+            ArrayResize(lines, lineIndex + 1);
+            lines[lineIndex++] = StringFormat("Seuil de déclenchement : %.5f", InpSeuilDeclenchement);
 
-      ObjectSetString(0, labelName, OBJPROP_TEXT, lines[i]);
+            ArrayResize(lines, lineIndex + 1);
+            lines[lineIndex++] = StringFormat("Respiration pour seuil : %.5f", InpRespiration);
 
-      ObjectSetInteger(0, labelName, OBJPROP_COLOR, textColor);
-      ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 10);
-      ObjectSetString(0,  labelName, OBJPROP_FONT, "Arial");
-      ObjectSetInteger(0, labelName, OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, labelName, OBJPROP_BACK, false);
-      ObjectSetInteger(0, labelName, OBJPROP_ZORDER, 1);
-   }
+            // Calcul comme SL classique => prix / points / % / €
+            double slSuiveur = GetCurrentSL(Symbol());
+            double openSuiv  = PositionGetDouble(POSITION_PRICE_OPEN);
+            double lotSuiv   = PositionGetDouble(POSITION_VOLUME);
 
-   // ------------------------------------------------------------------
-   // (D) Vérification finale
-   // ------------------------------------------------------------------
-   if(!ObjectFind(0, tableName))
-      Print("Erreur : rectangle principal non trouvé !");
-   else
-      Print("Cadre + 14 lignes créés avec succès !");
+            double sPoints   = PointsDifference(Symbol(), openSuiv, slSuiveur);
+            double sCurr     = ConvertPointsToCurrency(Symbol(), sPoints, lotSuiv);
+            double sPct      = EquityPercentage(sCurr);
+
+if (slSuiveur > 0.0)
+            {
+                ArrayResize(lines, lineIndex + 1);
+                lines[lineIndex++] = StringFormat(
+                    "SL placé à : %.5f || %.0f points || %.2f%% || %.2f%s",
+                    slSuiveur, sPoints, sPct, sCurr,
+                    AccountInfoString(ACCOUNT_CURRENCY)
+                );
+            }
+            else
+            {
+                ArrayResize(lines, lineIndex + 1);
+                lines[lineIndex++] = "SL placé à : 0.00000 || 0 points || 0% || 0.00";
+            }
+        }
+        else
+        {
+            // SL suiveur déclenché
+            ArrayResize(lines, lineIndex + 1);
+            lines[lineIndex++] = StringFormat("SL suiveur déclenché à : %.5f", trailingSL);
+
+            ArrayResize(lines, lineIndex + 1);
+            lines[lineIndex++] = StringFormat("Respiration pour SL suiveur : %.5f", InpRespirationSL);
+
+            // De la même façon, on calcule le SL suiveur, etc.
+            double slSuiveur = GetCurrentSL(Symbol()); // ou trailingSL
+            double openSuiv  = PositionGetDouble(POSITION_PRICE_OPEN);
+            double lotSuiv   = PositionGetDouble(POSITION_VOLUME);
+
+            double sPoints   = PointsDifference(Symbol(), openSuiv, slSuiveur);
+            double sCurr     = ConvertPointsToCurrency(Symbol(), sPoints, lotSuiv);
+            double sPct      = EquityPercentage(sCurr);
+
+            if (slSuiveur > 0.0)
+            {
+                ArrayResize(lines, lineIndex + 1);
+                lines[lineIndex++] = StringFormat(
+                    "SL suiveur placé à : %.5f || %.0f points || %.2f%% || %.2f%s",
+                    slSuiveur, sPoints, sPct, sCurr,
+                    AccountInfoString(ACCOUNT_CURRENCY)
+                );
+            }
+            else
+            {
+                ArrayResize(lines, lineIndex + 1);
+                lines[lineIndex++] = "SL suiveur placé à : 0.00000 || 0 points || 0% || 0.00";
+            }
+        }
+    }
+
+    // -------------------------------------------------------
+    // Création du rectangle + étiquettes
+    // -------------------------------------------------------
+    string rectangleName = "DisplayRectangle_" + Symbol();
+
+    if (ObjectFind(0, rectangleName) < 0)
+    {
+        if (!ObjectCreate(0, rectangleName, OBJ_RECTANGLE_LABEL, 0, 0, 0))
+        {
+            Print("Erreur création du rectangle ", rectangleName, ": ", GetLastError());
+            return;
+        }
+    }
+
+    // Largeur fixe par défaut (290). Si vous voulez l'ajuster 
+    // dynamiquement selon la longueur du texte, calculez-le ici.
+    ObjectSetInteger(0, rectangleName, OBJPROP_BGCOLOR, TableFondColor);
+    ObjectSetInteger(0, rectangleName, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+    ObjectSetInteger(0, rectangleName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+    ObjectSetInteger(0, rectangleName, OBJPROP_XDISTANCE, xPos);
+    ObjectSetInteger(0, rectangleName, OBJPROP_YDISTANCE, yPos);
+    ObjectSetInteger(0, rectangleName, OBJPROP_XSIZE, 320);
+    ObjectSetInteger(0, rectangleName, OBJPROP_YSIZE, lineIndex * lineSpacing + 20);
+    ObjectSetInteger(0, rectangleName, OBJPROP_BACK, false);
+
+    // Créer ou mettre à jour chaque ligne (OBJ_LABEL)
+    for (int i = 0; i < lineIndex; i++)
+    {
+        string labelName = "TableLabel_" + Symbol() + "_Line_" + IntegerToString(i);
+
+        if (ObjectFind(0, labelName) < 0)
+        {
+            if (!ObjectCreate(0, labelName, OBJ_LABEL, 0, 0, 0))
+            {
+                Print("Erreur création label #", i, ": ", GetLastError());
+                continue;
+            }
+        }
+
+        ObjectSetInteger(0, labelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+        ObjectSetInteger(0, labelName, OBJPROP_XDISTANCE, xPos + 10);
+        ObjectSetInteger(0, labelName, OBJPROP_YDISTANCE, yPos + i * lineSpacing + 10);
+        ObjectSetInteger(0, labelName, OBJPROP_COLOR, TextColor);
+        ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 10);
+        ObjectSetString(0, labelName, OBJPROP_FONT, "Arial");
+        ObjectSetString(0, labelName, OBJPROP_TEXT, lines[i]);
+        ObjectSetInteger(0, labelName, OBJPROP_BACK, false);
+    }
+
+    // Supprimer toutes les anciennes lignes (si plus utilisées)
+    for (int i = lineIndex; i < 16; i++)
+    {
+        string labelName = "TableLabel_" + Symbol() + "_Line_" + IntegerToString(i);
+        ObjectDelete(0, labelName);
+    }
 }
-                           
+
 //+------------------------------------------------------------------+
 //| Fonction pour dessiner un label unique                           |
 //+------------------------------------------------------------------+
 void DrawSingleLabel(string labelName, string text, color clr, int line, int yPos)
 {
-   // Supprimer le label existant s'il existe
-   ObjectDelete(0, labelName);
+    // Supprimer le label existant s'il existe
+    ObjectDelete(0, labelName);
 
-   // Créer le label
-   if (!ObjectCreate(0, labelName, OBJ_LABEL, 0, 0, 0))
-   {
-      Print("Erreur création de l'objet ", labelName, ": ", GetLastError());
-      return;
-   }
+    // Créer le label
+    if (!ObjectCreate(0, labelName, OBJ_LABEL, 0, 0, 0))
+    {
+        Print("Erreur création de l'objet ", labelName, ": ", GetLastError());
+        return;
+    }
 
-   // Déterminer le coin en fonction de TextPosition
-   int corner = CORNER_RIGHT_LOWER; // Valeur par défaut
+    // Déterminer le coin en fonction de TextPosition
+    int corner = CORNER_RIGHT_LOWER; // Valeur par défaut
 
-   if (TextPosition == 1)
-      corner = CORNER_LEFT_UPPER;
-   else if (TextPosition == 2)
-      corner = CORNER_RIGHT_UPPER;
-   else if (TextPosition == 3)
-      corner = CORNER_LEFT_LOWER;
-   else if (TextPosition == 4)
-      corner = CORNER_RIGHT_LOWER;
+    switch (TextPosition)
+    {
+        case 1: corner = CORNER_LEFT_UPPER; break;
+        case 2: corner = CORNER_RIGHT_UPPER; break;
+        case 3: corner = CORNER_LEFT_LOWER; break;
+        case 4: corner = CORNER_RIGHT_LOWER; break;
+    }
 
-   // Définir la position du label
-   int xDistance = 250; // Ajustez selon vos besoins
+    // Définir la position du label
+    int xDistance = 250; // Ajustez selon vos besoins
 
-   // Configurer les propriétés du label
-   ObjectSetInteger(0, labelName, OBJPROP_CORNER, corner);
-   ObjectSetInteger(0, labelName, OBJPROP_XDISTANCE, xDistance);
-   ObjectSetInteger(0, labelName, OBJPROP_YDISTANCE, yPos);
-   ObjectSetString(0, labelName, OBJPROP_TEXT, text);
-   ObjectSetInteger(0, labelName, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 10);
-   ObjectSetInteger(0, labelName, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, labelName, OBJPROP_HIDDEN, true);
+    // Configurer les propriétés du label
+    ObjectSetInteger(0, labelName, OBJPROP_CORNER, corner);
+    ObjectSetInteger(0, labelName, OBJPROP_XDISTANCE, xDistance);
+    ObjectSetInteger(0, labelName, OBJPROP_YDISTANCE, yPos);
+    ObjectSetString(0, labelName, OBJPROP_TEXT, text);
+    ObjectSetInteger(0, labelName, OBJPROP_COLOR, clr);
+    ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 10);
+    ObjectSetInteger(0, labelName, OBJPROP_SELECTABLE, false);
+    ObjectSetInteger(0, labelName, OBJPROP_HIDDEN, true);
 }
 
 //+------------------------------------------------------------------+
@@ -1741,7 +1922,7 @@ void CleanupDisplayFrame()
    string frameName = "DisplayFrame_" + currentSymbol;
    ObjectDelete(0, frameName);
 }
-
+                           
 //+------------------------------------------------------------------+
 //| Fonction pour mettre à jour l'affichage du SL                    |
 //+------------------------------------------------------------------+
@@ -1756,8 +1937,6 @@ void UpdateSLDisplay(bool isActivated, double seuil_activation = 0.0, double seu
       // Ne pas afficher les niveaux de SL pour les positions sur d'autres symboles
       return;
    }
-
-   if (!DisplayFrameContinuously) return; // Utilisation de DisplayFrameContinuously
 
    double lotSize = FixedLotSize; // Utilisez la taille de lot fixe par défaut
 
@@ -1776,7 +1955,7 @@ void UpdateSLDisplay(bool isActivated, double seuil_activation = 0.0, double seu
       double sl_suiveur_currency = ConvertPointsToCurrency(currentSymbol, sl_suiveur_level / SymbolInfoDouble(currentSymbol, SYMBOL_POINT), lotSize);
       double nouveau_sl_currency = ConvertPointsToCurrency(currentSymbol, nouveau_sl / SymbolInfoDouble(currentSymbol, SYMBOL_POINT), lotSize);
 
-      string respiration_status = InpActivationRespiration ? "Réspiration activée" : "Réspiration désactivée";
+      string respiration_status = InpActivationRespiration ? "Respiration activée" : "Respiration désactivée";
       DrawSingleLabel(LABEL_RESPIRATION_STATUS, respiration_status, TextColor, 0, 50);
 
       if (!isActivated)
@@ -1803,7 +1982,6 @@ void UpdateSLDisplay(bool isActivated, double seuil_activation = 0.0, double seu
       }
    }
 }
-
 //+------------------------------------------------------------------+
 //| Fonction pour ajuster les valeurs de respiration et seuils       |
 //+------------------------------------------------------------------+
@@ -1934,65 +2112,20 @@ void ResetMartingale(string symbol = "")
 }
 
 //+------------------------------------------------------------------+
-//| Fonction pour ouvrir une nouvelle position                       |
-//+------------------------------------------------------------------+
-bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume)
-{
-   string currentSymbol = Symbol(); // Symbole du graphique actuel
-
-   if (symbol != currentSymbol)
-   {
-      // Ne pas afficher d'objets graphiques pour les positions sur d'autres symboles
-      return trade.PositionOpen(symbol, orderType, volume, 0, 0, 0);
-   }
-
-   double sl = 0.0, tp = 0.0, slPercentage = 0.0, tpPercentage = 0.0, slPoints = 0.0, tpPoints = 0.0;
-
-   if (StopLossType == SL_Classique)
-   {
-      CalculateClassicSLTP(symbol, orderType, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
-   }
-   else if (StopLossType == SL_Suiveur)
-   {
-      CalculateTrailingSLTP(symbol, orderType, sl, tp);
-   }
-
-   // Ouvrir la position
-   if (trade.PositionOpen(symbol, orderType, volume, 0, sl, tp))
-   {
-      Print("Position ouverte pour ", symbol, " - Type: ", EnumToString(orderType), " - Volume: ", volume);
-      Print("SL: ", sl, " - TP: ", tp);
-      Print("SL en pourcentage de l'équité: ", slPercentage, "%");
-      Print("TP en pourcentage de l'équité: ", tpPercentage, "%");
-      Print("SL en points: ", slPoints);
-      Print("TP en points: ", tpPoints);
-
-      // Envoyer des notifications
-      SendNotifications(symbol, orderType, volume, (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID), sl, tp);
-
-      // Mettre à jour l'affichage des niveaux de SL si le cadre est activé
-      if (DisplayFrameContinuously)
-      {
-         UpdateSLDisplay(false, 0.0, 0.0, sl, 0.0);
-      }
-
-      return true;
-   }
-   else
-   {
-      Print("Erreur lors de l'ouverture de la position pour ", symbol, " - Erreur: ", GetLastError());
-      return false;
-   }
-}
-
-//+------------------------------------------------------------------+
 //| Fonction de mise à jour des statistiques                          |
 //+------------------------------------------------------------------+
 void UpdateTradingStats(string symbol, double profit, double volume)
 {
-    // Ici vous pouvez ajouter le code pour mettre à jour vos statistiques
-    // Par exemple : nombre de trades, ratio gain/perte, etc.
-    // Cette fonction peut être développée selon vos besoins
+   static double totalProfit = 0.0;
+   static int totalTrades = 0;
+
+   totalProfit += profit;
+   totalTrades++;
+
+   Print("Statistiques pour ", symbol, ":");
+   Print("Profit total: ", totalProfit);
+   Print("Nombre total de trades: ", totalTrades);
+   Print("Profit moyen par trade: ", totalProfit / totalTrades);
 }
 
 //+------------------------------------------------------------------+
@@ -2008,16 +2141,8 @@ void CleanupChartObjects(string symbol)
       return;
    }
 
-   ObjectDelete(0, TRIGGER_OBJECT_NAME);
-   ObjectDelete(0, FOLLOWER_OBJECT_NAME);
-   ObjectDelete(0, LABEL_RESPIRATION_STATUS);
-   ObjectDelete(0, LABEL_SEUIL_DECLENCHEMENT);
-   ObjectDelete(0, LABEL_SL_A);
-   ObjectDelete(0, LABEL_NOUVEAUX_SL);
-   ObjectDelete(0, LABEL_SL_SUIVEUR);
-   
-   // Supprimer d'autres objets spécifiques au symbole si nécessaire
-   ObjectsDeleteAll(0, symbol + "_");
+   // Supprimer tous les objets graphiques pour le symbole donné
+   ObjectsDeleteAll(0, symbol + "_*");
 }
 
 //+------------------------------------------------------------------+
@@ -2025,44 +2150,119 @@ void CleanupChartObjects(string symbol)
 //+------------------------------------------------------------------+
 double ConvertPointsToCurrency(string symbol, double points, double lotSize)
 {
-   double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
-   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-   return points * point * tickValue * lotSize;
+    double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE); // Valeur d'un tick
+    double point = SymbolInfoDouble(symbol, SYMBOL_POINT);               // Taille d'un point
+    double tickSize = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);  // Taille d'un tick
+
+    // Calculer la valeur monétaire
+    return (points * point * lotSize * tickValue) / tickSize;
 }
 
 //+------------------------------------------------------------------+
-//| Fonction pour calculer les niveaux de SL et TP classiques        |
+//| Fonction pour calculer les niveaux de TP pour le Grid Trading    |
+//+------------------------------------------------------------------+
+void CalculateGridSLTP(string symbol, ENUM_ORDER_TYPE orderType, double &sl, double &tp, double &slPercentage, double &tpPercentage, double &slPoints, double &tpPoints)
+{
+   double lotSize = CalculateVolume(symbol);
+   double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+
+   // Calculer le niveau de TP en pips (pas de SL dans le Grid Trading)
+   tpPoints = NormalizeDouble(GridTakeProfitPoints / (lotSize * pointValue), digits);
+
+   // Récupérer le prix d'ouverture (ASK pour BUY, BID pour SELL)
+   double openPrice = (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
+
+   // Calculer le niveau de TP en prix
+   if (orderType == ORDER_TYPE_BUY)
+   {
+      tp = NormalizeDouble(openPrice + tpPoints * point, digits);
+   }
+   else if (orderType == ORDER_TYPE_SELL)
+   {
+      tp = NormalizeDouble(openPrice - tpPoints * point, digits);
+   }
+
+   // Convertir le niveau de TP en devise
+   double tpCurrency = ConvertPointsToCurrency(symbol, tpPoints, lotSize);
+
+   // Convertir le niveau de TP en pourcentage de l'équité
+   tpPercentage = ConvertToEquityPercentage(tpCurrency);
+
+   // Afficher les informations pour le débogage
+   Print("TP Grid calculé :");
+   Print("TP en pips : ", tpPoints);
+   Print("TP en devise : ", tpCurrency, " ", AccountInfoString(ACCOUNT_CURRENCY));
+   Print("TP en pourcentage de l'équité : ", tpPercentage, "%");
+   Print("TP en prix : ", tp);
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour calculer le pourcentage de variation               |
+//+------------------------------------------------------------------+
+double CalculatePercentageChange(double openPrice, double currentPrice, ENUM_POSITION_TYPE type)
+{
+    double percentageChange = ((currentPrice - openPrice) / openPrice) * 100.0;
+
+    // Ajuster le signe en fonction du type de position
+    if (type == POSITION_TYPE_SELL)
+    {
+        percentageChange = -percentageChange;
+    }
+
+    return percentageChange;
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour calculer les niveaux de SL et TP classiques         |
 //+------------------------------------------------------------------+
 void CalculateClassicSLTP(string symbol, ENUM_ORDER_TYPE orderType, double &sl, double &tp, double &slPercentage, double &tpPercentage, double &slPoints, double &tpPoints)
 {
-   double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+   double lotSize = CalculateVolume(symbol);
+   double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
    double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-   double lotSize = FixedLotSize; // Utilisez la taille de lot fixe par défaut
 
-   // Calculer les niveaux en points à partir des valeurs en devise
-   double slPointsCalc = (orderType == ORDER_TYPE_BUY) ?
-                         StopLossCurrency / (tickValue * lotSize) / point :
-                         -StopLossCurrency / (tickValue * lotSize) / point;
+   // Calculer les niveaux de SL et TP en pips
+   slPoints = NormalizeDouble(StopLossCurrency / (lotSize * pointValue), digits);
+   tpPoints = NormalizeDouble(TakeProfitCurrency / (lotSize * pointValue), digits);
 
-   double tpPointsCalc = (orderType == ORDER_TYPE_BUY) ?
-                         TakeProfitCurrency / (tickValue * lotSize) / point :
-                         -TakeProfitCurrency / (tickValue * lotSize) / point;
+   // Récupérer le prix d'ouverture (ASK pour BUY, BID pour SELL)
+   double openPrice = (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
 
-   // Calculer les niveaux de prix
-   double currentPrice = (orderType == ORDER_TYPE_BUY) ?
-                         SymbolInfoDouble(symbol, SYMBOL_ASK) :
-                         SymbolInfoDouble(symbol, SYMBOL_BID);
+   // Calculer les niveaux de SL et TP en prix
+   if (orderType == ORDER_TYPE_BUY)
+   {
+      sl = NormalizeDouble(openPrice - slPoints * point, digits);
+      tp = NormalizeDouble(openPrice + tpPoints * point, digits);
+   }
+   else if (orderType == ORDER_TYPE_SELL)
+   {
+      sl = NormalizeDouble(openPrice + slPoints * point, digits);
+      tp = NormalizeDouble(openPrice - tpPoints * point, digits);
+   }
 
-   sl = NormalizeDouble(currentPrice - slPointsCalc * point, _Digits);
-   tp = NormalizeDouble(currentPrice + tpPointsCalc * point, _Digits);
+   // Convertir les niveaux de SL et TP en devise
+   double slCurrency = ConvertPointsToCurrency(symbol, slPoints, lotSize);
+   double tpCurrency = ConvertPointsToCurrency(symbol, tpPoints, lotSize);
 
-   // Calculer les valeurs en pourcentage de l'équité
-   slPercentage = ConvertToEquityPercentage(StopLossCurrency);
-   tpPercentage = ConvertToEquityPercentage(TakeProfitCurrency);
+   // Convertir les niveaux de SL et TP en pourcentage de l'équité
+   slPercentage = ConvertToEquityPercentage(slCurrency);
+   tpPercentage = ConvertToEquityPercentage(tpCurrency);
 
-   // Calculer les valeurs en points
-   slPoints = slPointsCalc;
-   tpPoints = tpPointsCalc;
+   // Afficher les informations pour le débogage
+   Print("SL classique calculé :");
+   Print("SL en pips : ", slPoints);
+   Print("SL en devise : ", slCurrency, " ", AccountInfoString(ACCOUNT_CURRENCY));
+   Print("SL en pourcentage de l'équité : ", slPercentage, "%");
+   Print("SL en prix : ", sl);
+
+   Print("TP classique calculé :");
+   Print("TP en pips : ", tpPoints);
+   Print("TP en devise : ", tpCurrency, " ", AccountInfoString(ACCOUNT_CURRENCY));
+   Print("TP en pourcentage de l'équité : ", tpPercentage, "%");
+   Print("TP en prix : ", tp);
 }
 
 //+------------------------------------------------------------------+
@@ -2099,19 +2299,16 @@ void UpdateTrailingStop(string symbol, ulong ticket, ENUM_POSITION_TYPE type, do
                         double &seuilDeclenchementPercentage, double &respirationPercentage, double &slSuiveurPercentage,
                         double &seuilDeclenchementPoints, double &respirationPoints, double &slSuiveurPoints)
 {
+   double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
    double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
    double lotSize = position.Volume();
    double newSL = currentSL;
 
-   // Calculer le seuil de déclenchement ajusté
-   double adjustedSeuilDeclenchement = adjusted_InpSeuilDeclenchement / (SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE) * lotSize) / point;
-
-   // Calculer la distance du SL suiveur ajustée
-   double adjustedSLsuiveur = adjusted_InpSLsuiveur / (SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE) * lotSize) / point;
-
-   // Calculer la respiration ajustée
-   double adjustedRespiration = adjusted_InpRespiration / (SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE) * lotSize) / point;
-   double adjustedRespirationSL = adjusted_InpRespirationSL / (SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE) * lotSize) / point;
+   // Convertir les valeurs en devise
+   double adjustedSeuilDeclenchement = adjusted_InpSeuilDeclenchement / tickValue / lotSize;
+   double adjustedSLsuiveur = adjusted_InpSLsuiveur / tickValue / lotSize;
+   double adjustedRespiration = adjusted_InpRespiration / tickValue / lotSize;
+   double adjustedRespirationSL = adjusted_InpRespirationSL / tickValue / lotSize;
 
    // Calculer les valeurs en pourcentage de l'équité
    seuilDeclenchementPercentage = ConvertToEquityPercentage(adjusted_InpSeuilDeclenchement);
@@ -2119,9 +2316,9 @@ void UpdateTrailingStop(string symbol, ulong ticket, ENUM_POSITION_TYPE type, do
    slSuiveurPercentage = ConvertToEquityPercentage(adjusted_InpSLsuiveur);
 
    // Calculer les valeurs en points
-   seuilDeclenchementPoints = adjustedSeuilDeclenchement;
-   respirationPoints = adjustedRespiration;
-   slSuiveurPoints = adjustedSLsuiveur;
+   seuilDeclenchementPoints = adjustedSeuilDeclenchement * point;
+   respirationPoints = adjustedRespiration * point;
+   slSuiveurPoints = adjustedSLsuiveur * point;
 
    // Vérifier si le seuil de déclenchement est atteint
    if (!seuil_declenche_actif)
@@ -2169,7 +2366,6 @@ void UpdateTrailingStop(string symbol, ulong ticket, ENUM_POSITION_TYPE type, do
       }
    }
 }
-            
 
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier si le TP ou SL a été atteint               |
@@ -2179,30 +2375,15 @@ void CheckTakeProfitStopLoss(string symbol, ulong ticket, ENUM_POSITION_TYPE typ
    double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
    double lotSize = position.Volume();
 
-   // Convertir les niveaux de SL et TP en points
-   double slPoints = (type == POSITION_TYPE_BUY) ?
-                     (position.PriceOpen() - sl) / point :
-                     (sl - position.PriceOpen()) / point;
-
-   double tpPoints = (type == POSITION_TYPE_BUY) ?
-                     (tp - position.PriceOpen()) / point :
-                     (position.PriceOpen() - tp) / point;
-
-   // Convertir les niveaux en devise pour les comparaisons
-   double slInCurrency = ConvertPointsToCurrency(symbol, slPoints, lotSize);
-   double tpInCurrency = ConvertPointsToCurrency(symbol, tpPoints, lotSize);
-
-   // Calculer les valeurs en pourcentage de l'équité
-   double slPercentage = ConvertToEquityPercentage(slInCurrency);
-   double tpPercentage = ConvertToEquityPercentage(tpInCurrency);
-
    // Vérifier si le Take Profit a été atteint
-   if ((type == POSITION_TYPE_BUY && currentPrice >= tp) ||
-       (type == POSITION_TYPE_SELL && currentPrice <= tp))
+   if (tp > 0 && ((type == POSITION_TYPE_BUY && currentPrice >= tp) || (type == POSITION_TYPE_SELL && currentPrice <= tp)))
    {
       if (trade.PositionClose(ticket))
       {
          Print("Take Profit atteint pour ", symbol);
+         double tpPoints = CalculatePriceDifferenceInPoints(symbol, position.PriceOpen(), tp);
+         double tpInCurrency = ConvertPointsToCurrency(symbol, tpPoints, lotSize);
+         double tpPercentage = ConvertToEquityPercentage(tpInCurrency);
          Print("TP en devise: ", tpInCurrency, " ", AccountInfoString(ACCOUNT_CURRENCY));
          Print("TP en pourcentage de l'équité: ", tpPercentage, "%");
          Print("TP en points: ", tpPoints);
@@ -2214,12 +2395,14 @@ void CheckTakeProfitStopLoss(string symbol, ulong ticket, ENUM_POSITION_TYPE typ
    }
 
    // Vérifier si le Stop Loss a été atteint
-   if ((type == POSITION_TYPE_BUY && currentPrice <= sl) ||
-       (type == POSITION_TYPE_SELL && currentPrice >= sl))
+   if (sl > 0 && ((type == POSITION_TYPE_BUY && currentPrice <= sl) || (type == POSITION_TYPE_SELL && currentPrice >= sl)))
    {
       if (trade.PositionClose(ticket))
       {
          Print("Stop Loss atteint pour ", symbol);
+         double slPoints = CalculatePriceDifferenceInPoints(symbol, position.PriceOpen(), sl);
+         double slInCurrency = ConvertPointsToCurrency(symbol, slPoints, lotSize);
+         double slPercentage = ConvertToEquityPercentage(slInCurrency);
          Print("SL en devise: ", slInCurrency, " ", AccountInfoString(ACCOUNT_CURRENCY));
          Print("SL en pourcentage de l'équité: ", slPercentage, "%");
          Print("SL en points: ", slPoints);
@@ -2255,91 +2438,180 @@ double CalculatePriceDifferenceInPoints(string symbol, double initialPrice, doub
 }
 
 //+------------------------------------------------------------------+
-//| Fonction de gestion de la fermeture d'une position               |
+//| Fonction pour ouvrir une nouvelle position                       |
 //+------------------------------------------------------------------+
-void OnPositionClose(ulong ticket)
+bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, double sl, double tp, string comment = "")
 {
-   if (!position.SelectByTicket(ticket))
-      return;
+   double slPercentage = 0.0, tpPercentage = 0.0, slPoints = 0.0, tpPoints = 0.0;
 
-   string currentSymbol = Symbol(); // Symbole du graphique actuel
-   string positionSymbol = position.Symbol();
-
-   if (positionSymbol != currentSymbol)
+   if (StopLossType == SL_Classique)
    {
-      // Ne pas afficher de notifications ou nettoyer les objets graphiques pour les positions sur d'autres symboles
-      return;
+      CalculateClassicSLTP(symbol, orderType, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
+   }
+   else if (StopLossType == SL_Suiveur)
+   {
+      CalculateTrailingSLTP(symbol, orderType, sl, tp);
+      // Pour le SL suiveur, sl et tp sont déjà calculés
+   }
+   else if (StopLossType == GridTrading)
+   {
+      CalculateGridSLTP(symbol, orderType, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
    }
 
-   double profit = position.Profit();
-   double volume = position.Volume();
-   ENUM_POSITION_TYPE posType = position.PositionType();
-
-   // Gérer la martingale en fonction du résultat
-   ManageMartingale(positionSymbol, profit >= 0);
-
-   // Enregistrer les statistiques
-   UpdateTradingStats(positionSymbol, profit, volume);
-
-   // Nettoyer les objets graphiques si nécessaire
-   if (CountPositions(positionSymbol) == 0)
+   // Ouvrir la position
+   if (trade.PositionOpen(symbol, orderType, volume, 0, sl, tp, comment))
    {
-      CleanupChartObjects(positionSymbol);
-   }
+      Print("Position ouverte pour ", symbol, " - Type: ", EnumToString(orderType), " - Volume: ", volume);
+      Print("SL: ", sl, " - TP: ", tp);
+      Print("SL en pourcentage de l'équité: ", slPercentage, "%");
+      Print("TP en pourcentage de l'équité: ", tpPercentage, "%");
+      Print("SL en points: ", slPoints);
+      Print("TP en points: ", tpPoints);
 
-   // Réinitialiser les variables du SL suiveur si nécessaire
-   if (StopLossType == SL_Suiveur)
+      // Envoyer des notifications
+      SendNotifications(symbol, orderType, volume, (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID), sl, tp);
+
+      // Mettre à jour l'affichage des niveaux de SL si nécessaire
+      UpdateSLDisplay(StopLossType == SL_Suiveur, InpSeuilDeclenchement, trailingSL, sl);
+
+      return true;
+   }
+   else
    {
-      seuil_declenche_actif = false;
-      sl_level = 0.0;
-      position_price_open = 0.0;
-      trailingSL = 0.0;
+      Print("Erreur lors de l'ouverture de la position pour ", symbol, " - Erreur: ", GetLastError());
+      return false;
    }
-
-   // Envoyer les notifications
-   string direction = (posType == POSITION_TYPE_BUY) ? "ACHAT" : "VENTE";
-   string resultText = (profit >= 0) ? "GAIN" : "PERTE";
-   string message = StringFormat("🔔 %s: Position %s fermée\nRésultat: %s\nProfit: %.2f %s\nVolume: %.2f", 
-                                 positionSymbol, direction, resultText, profit, AccountInfoString(ACCOUNT_CURRENCY), volume);
-
-   SendNotification(message);
-   PlaySound(profit >= 0 ? "ok.wav" : "timeout.wav");
-
-   // Mettre à jour le journal
-   Print(message);
-
-   // Calculer le profit en pourcentage de l'équité
-   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
-   double profitPercentage = (profit / equity) * 100.0;
-   Print("Profit en pourcentage de l'équité: ", profitPercentage, "%");
-
-   // Mettre à jour l'affichage sur le graphique
-   Comment(message);
-
-   // Réinitialiser le ticket courant si nécessaire
-   if (ticket == current_ticket)
-      current_ticket = 0;
-
-   // Mettre à jour LastTradeTime
-   LastTradeTime = TimeCurrent();
 }
 
 //+------------------------------------------------------------------+
-//| Fonction pour deplacer le texte avec le tableau                  |
+//| Récupérer le Stop Loss actuel pour un symbole donné              |
 //+------------------------------------------------------------------+
-void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+double GetCurrentSL(string symbol)
 {
-   if (id == CHARTEVENT_OBJECT_DRAG)
+    if (PositionSelect(symbol))
+    {
+        return PositionGetDouble(POSITION_SL); // Retourne le Stop Loss actuel
+    }
+    return 0.0; // Retourne 0 si aucune position n'est ouverte
+}
+
+//+------------------------------------------------------------------+
+//| Récupérer le Take Profit actuel pour un symbole donné            |
+//+------------------------------------------------------------------+
+double GetCurrentTP(string symbol)
+{
+    if (PositionSelect(symbol))
+    {
+        return PositionGetDouble(POSITION_TP); // Retourne le Take Profit actuel
+    }
+    return 0.0; // Retourne 0 si aucune position n'est ouverte
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour calculer le nombre de points entre deux prix       |
+//+------------------------------------------------------------------+
+double PointsDifference(string symbol, double price1, double price2)
+{
+   double pointValue = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   // On prend la valeur absolue
+   return MathAbs(price2 - price1) / pointValue;
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour calculer le pourcentage d'une valeur par rapport à l'équité |
+//+------------------------------------------------------------------+
+double EquityPercentage(double value)
+{
+    double equity = AccountInfoDouble(ACCOUNT_EQUITY); // Équité du compte
+    if (equity <= 0)
+    {
+        Print("Erreur : L'équité du compte est nulle ou négative.");
+        return 0.0; // Retourne 0 pour éviter des divisions par zéro
+    }
+    return (value / equity) * 100.0; // Retourne le pourcentage
+}
+
+//+------------------------------------------------------------------+
+//| Fonction utilitaire pour trouver l'index du trade par symbole.   |
+//+------------------------------------------------------------------+
+int FindTradeIndexBySymbol(string symbol) {
+    for(int i = 0; i < ArraySize(openTrades); i++) {
+        if(openTrades[i].symbol == symbol) return i;
+    }
+    return -1;
+}
+//+------------------------------------------------------------------+
+//| Fonction de condition d'ouverture de position sur le grid        |
+//+------------------------------------------------------------------+
+bool OpenPositionWithGridTrading(string symbol, CrossSignal signal, double volume)
+{
+   int currentPositions = CountPositions(symbol);
+   if (currentPositions < GridMaxOrders)
    {
-      // Obtenir la liste des objets sur le graphique
-      int objects = ObjectsTotal();
-      for (int i = 0; i < objects; i++)
-      {
-         string objectName = ObjectName(i);
-         Print(objectName);
-      }
+      Print("Nombre maximum de positions atteint pour ", symbol, " (", GridMaxOrders, "). Pas de nouvelle position ouverte.");
+      return false;
    }
+
+   double sl = 0.0, tp = 0.0;
+   double slPercentage = 0.0, tpPercentage = 0.0, slPoints = 0.0, tpPoints = 0.0;
+
+   CalculateGridSLTP(symbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
+
+   if (OpenPosition(symbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, volume, sl, tp))
+   {
+      Print("Position ouverte avec Grid Trading pour ", symbol);
+      return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Fonction de condition d'ouverture de position sur le SLsuiveur   |
+//+------------------------------------------------------------------+
+bool OpenPositionWithTrailingSL(string symbol, CrossSignal signal, double volume)
+{
+   if (IsPositionOpen(symbol))
+   {
+      Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
+      return false;
+   }
+
+   double sl = 0.0, tp = 0.0;
+
+   CalculateTrailingSLTP(symbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, sl, tp);
+
+   if (OpenPosition(symbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, volume, sl, tp))
+   {
+      Print("Position ouverte avec Stop Loss Suiveur pour ", symbol);
+      return true;
+   }
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Fonction de condition d'ouverture de position sur le SLclassique |
+//+------------------------------------------------------------------+
+bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
+{
+   if (IsPositionOpen(symbol))
+   {
+      Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
+      return false;
+   }
+     
+   double sl = 0.0, tp = 0.0;
+   double slPercentage = 0.0, tpPercentage = 0.0, slPoints = 0.0, tpPoints = 0.0;
+
+   CalculateClassicSLTP(symbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
+
+   if (OpenPosition(symbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, volume, sl, tp))
+   {
+      Print("Position ouverte avec Stop Loss Classique pour ", symbol);
+      return true;
+   }
+      
+   return false;
 }
 //+------------------------------------------------------------------+
 //| Fin du code                                                      |
-//+------------------------------------------------------------------+     
+//+------------------------------------------------------------------+ 
