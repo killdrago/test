@@ -230,7 +230,7 @@ void OnTick()
    {
       if (TrendMethodChoice == Ichimoku)
       {
-         DrawIchimokuCloud();
+         DisplayIchimokuOnChart();
       }
       else if (TrendMethodChoice == MA)
       {
@@ -1322,75 +1322,41 @@ void ManageGridTrading(CPositionInfo &pos, double &gridDistancePercentage, doubl
 }
 
 //+------------------------------------------------------------------+
-//| Fonction pour dessiner le nuage Ichimoku                           |
+//| Fonction pour afficher le nuage Ichimoku sur le graphique         |
 //+------------------------------------------------------------------+
-void DrawIchimokuCloud()
+void DisplayIchimokuOnChart()
 {
-   // Paramètres de l'Ichimoku (standard)
-   int    TenkanSenPeriod = 9;
-   int    KijunSenPeriod  = 26;
-   int    SenkouSpanBPeriod= 52;
+   string symbol = Symbol();
+   ENUM_TIMEFRAMES timeframe = TrendTimeframe;
 
-   // Récupérer le handle de l'indicateur Ichimoku
-   int ichimokuHandle = iIchimoku(Symbol(), Period(), TenkanSenPeriod, KijunSenPeriod, SenkouSpanBPeriod);
-   if (ichimokuHandle == INVALID_HANDLE)
-   {
-      Print("Erreur lors de la récupération du handle de l'Ichimoku pour le dessin du nuage!");
-      return;
-   }
+   // Supprimer les objets existants pour éviter les doublons
+   ObjectsDeleteAll(0, "Ichimoku*");
 
-   // Définir les couleurs pour le nuage
-   color bullishCloudColor = clrGreen;  // Couleur du nuage haussier
-   color bearishCloudColor = clrRed;    // Couleur du nuage baissier
-
-   // Nombre de bougies à afficher pour le nuage (peut être ajusté)
-   int barsToDraw = 500;
-
-   // Tableaux pour stocker les valeurs de Senkou Span A et B
+   // Obtenir les buffers Ichimoku (uniquement Senkou Span A et B)
    double senkouSpanA[], senkouSpanB[];
+
    ArraySetAsSeries(senkouSpanA, true);
    ArraySetAsSeries(senkouSpanB, true);
 
-   // Copier les valeurs des buffers de l'Ichimoku
-   CopyBuffer(ichimokuHandle, 2, 0, barsToDraw, senkouSpanA); // Senkou Span A
-   CopyBuffer(ichimokuHandle, 3, 0, barsToDraw, senkouSpanB); // Senkou Span B
+   int ichimokuHandle = iIchimoku(symbol, timeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
 
-   // Dessiner les rectangles pour le nuage
-   for (int i = 0; i < barsToDraw - 1; i++)
+   if (CopyBuffer(ichimokuHandle, 2, 0, 100, senkouSpanA) <= 0 ||
+       CopyBuffer(ichimokuHandle, 3, 0, 100, senkouSpanB) <= 0)
    {
-      datetime time1 = iTime(Symbol(), Period(), i + 1);
-      datetime time2 = iTime(Symbol(), Period(), i);
-      double price1, price2;
-      string objectName = "IchimokuCloud_" + IntegerToString(i);
+       Print("Erreur lors de la copie des données Ichimoku pour l'affichage sur le graphique");
+      return;
+   }
 
-      // Supprimer l'objet existant s'il existe
-      ObjectDelete(ChartID(), objectName);
-
-      if (senkouSpanA[i] > senkouSpanB[i])
+   // Afficher le nuage Ichimoku (Senkou Span A et B)
+   for (int i = 0; i < ArraySize(senkouSpanA) - 1; i++)
+   {
+      if (senkouSpanA[i] != EMPTY_VALUE && senkouSpanA[i + 1] != EMPTY_VALUE &&
+          senkouSpanB[i] != EMPTY_VALUE && senkouSpanB[i + 1] != EMPTY_VALUE)
       {
-         price1 = senkouSpanB[i];
-         price2 = senkouSpanA[i];
-         if (ObjectCreate(ChartID(), objectName, OBJ_RECTANGLE, 0, time1, price1, time2, price2))
-         {
-            ObjectSetInteger(ChartID(), objectName, OBJPROP_COLOR, bullishCloudColor);
-            ObjectSetInteger(ChartID(), objectName, OBJPROP_FILL, true);
-            ObjectSetInteger(ChartID(), objectName, OBJPROP_ZORDER, -1); // Mettre derrière les chandeliers
-            ObjectSetInteger(ChartID(), objectName, OBJPROP_SELECTABLE, false);
-            ObjectSetInteger(ChartID(), objectName, OBJPROP_MOVABLE, false);
-         }
-      }
-      else if (senkouSpanB[i] > senkouSpanA[i])
-      {
-         price1 = senkouSpanA[i];
-         price2 = senkouSpanB[i];
-         if (ObjectCreate(ChartID(), objectName, OBJ_RECTANGLE, 0, time1, price1, time2, price2))
-         {
-            ObjectSetInteger(ChartID(), objectName, OBJPROP_COLOR, bearishCloudColor);
-            ObjectSetInteger(ChartID(), objectName, OBJPROP_FILL, true);
-            ObjectSetInteger(ChartID(), objectName, OBJPROP_ZORDER, -1); // Mettre derrière les chandeliers
-            ObjectSetInteger(ChartID(), objectName, OBJPROP_SELECTABLE, false);
-            ObjectSetInteger(ChartID(), objectName, OBJPROP_MOVABLE, false);
-         }
+         ObjectCreate(0, "Ichimoku_Cloud_" + (string)i, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i), MathMin(senkouSpanA[i], senkouSpanB[i]), iTime(symbol, timeframe, i + 1), MathMax(senkouSpanA[i + 1], senkouSpanB[i + 1]));
+         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_COLOR, (senkouSpanA[i] > senkouSpanB[i]) ? clrLimeGreen : clrRed);
+         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_FILL, true);
+         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_BACK, true);
       }
    }
 }
@@ -2647,7 +2613,6 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
    }
    return false;
 }
-            
 //+------------------------------------------------------------------+
 //| Fin du code                                                      |
 //+------------------------------------------------------------------+ 
