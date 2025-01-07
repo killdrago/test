@@ -199,7 +199,8 @@ enum CrossSignal { Achat, Vente, Aucun };
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    //--- indicator buffers mapping
+
+   //--- indicator buffers mapping
    SetIndexBuffer(0,ExtTenkanBuffer,INDICATOR_DATA);
    SetIndexBuffer(1,ExtKijunBuffer,INDICATOR_DATA);
    SetIndexBuffer(2,ExtSpanABuffer,INDICATOR_DATA);
@@ -282,12 +283,17 @@ if(MA)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+datetime timeArray[];
+ArraySetAsSeries(timeArray, true);
+int copied = CopyTime(Symbol(), Period(), 0, 100, timeArray);
+if (copied > 0)
+
       // Afficher les indicateurs sur le graphique si demandé
    if (DisplayOnChart)
    {
-       if (TrendMethodChoice == Ichimoku)
+        if (TrendMethodChoice == Ichimoku)
         {
-            DisplayIchimokuOnChart(High, Low, Time);
+            DisplayIchimokuOnChart(High, Low, timeArray);
         }
       else if (TrendMethodChoice == MA)
       {
@@ -1392,73 +1398,100 @@ void ManageGridTrading(CPositionInfo &pos, double &gridDistancePercentage, doubl
 }
 
 //+------------------------------------------------------------------+
-// Fonctions utilitaires pour indicateur ichimoku                    |
+// Fonctions utilitaires pour indicateur Ichimoku                    |
 //+------------------------------------------------------------------+
-// Fonctions utilitaires au niveau global
 double Highest(const double& array[], const int range, int from_index)
 {
    double res = 0;
-   res = array[from_index];
-   for(int i = from_index; i > from_index-range && i >= 0; i--)
-      if(res < array[i])
-         res = array[i];
+   if (ArraySize(array) > 0 && from_index >= 0 && from_index < ArraySize(array))
+   {
+      res = array[from_index];
+      for (int i = from_index; i > from_index - range && i >= 0; i--)
+         if (res < array[i])
+            res = array[i];
+   }
    return res;
 }
 
 double Lowest(const double& array[], const int range, int from_index)
 {
    double res = 0;
-   res = array[from_index];
-   for(int i = from_index; i > from_index-range && i >= 0; i--)
-      if(res > array[i])
-         res = array[i];
+   if (ArraySize(array) > 0 && from_index >= 0 && from_index < ArraySize(array))
+   {
+      res = array[from_index];
+      for (int i = from_index; i > from_index - range && i >= 0; i--)
+         if (res > array[i])
+            res = array[i];
+   }
    return res;
 }
 
 void DisplayIchimokuOnChart(const double &high[], const double &low[], const datetime &time[])
 {
-    int rates_total = Bars(Symbol(), Period());
-    int kijun_shift = Ichimoku_Kijun;
+   // Définir les périodes Ichimoku
+   int tenkan_period = Ichimoku_Tenkan; // Période Tenkan-sen
+   int kijun_period = Ichimoku_Kijun;   // Période Kijun-sen
+   int senkou_period = Ichimoku_Senkou; // Période Senkou Span B
+   int kijun_shift = Ichimoku_Kijun;    // Décalage pour le nuage (26 périodes par défaut)
 
-    // Supprimer les anciens objets du nuage
-    ObjectsDeleteAll(0, cloud_object_prefix);
+   // Obtenir le nombre total de barres
+   int rates_total = ArraySize(time);
 
-    for (int i = 0; i < rates_total; i++)
-    {
-        if (i + kijun_shift >= rates_total) continue;
+   // Supprimer les anciens objets du nuage
+   ObjectsDeleteAll(0, cloud_object_prefix);
 
-        // Calcul de la Tenkan-sen pour la barre actuelle
-        int tenkan_high_index = iHighest(Symbol(), Period(), MODE_HIGH, Ichimoku_Tenkan, i);
-        int tenkan_low_index  = iLowest(Symbol(), Period(), MODE_LOW,  Ichimoku_Tenkan, i);
-        double tenkan_sen  = (high[tenkan_high_index] + low[tenkan_low_index]) / 2.0;
+   // Parcourir les barres pour calculer et afficher les lignes Ichimoku
+   for (int i = 0; i < rates_total; i++)
+   {
+      // Vérifier si le décalage dépasse le nombre total de barres
+      if (i + kijun_shift >= rates_total)
+         continue;
 
-        // Calcul de la Kijun-sen pour la barre actuelle
-        int kijun_high_index = iHighest(Symbol(), Period(), MODE_HIGH, Ichimoku_Kijun, i);
-        int kijun_low_index  = iLowest(Symbol(), Period(), MODE_LOW,  Ichimoku_Kijun, i);
-        double kijun_sen  = (high[kijun_high_index] + low[kijun_low_index]) / 2.0;
+      // Calcul de la Tenkan-sen pour la barre actuelle
+      double tenkan_high = Highest(high, tenkan_period, i);
+      double tenkan_low = Lowest(low, tenkan_period, i);
+      double tenkan_sen = (tenkan_high + tenkan_low) / 2.0;
 
-        // Calcul du Senkou Span A (projeté en avant)
-        double senkou_span_a = (tenkan_sen + kijun_sen) / 2.0;
+      // Calcul de la Kijun-sen pour la barre actuelle
+      double kijun_high = Highest(high, kijun_period, i);
+      double kijun_low = Lowest(low, kijun_period, i);
+      double kijun_sen = (kijun_high + kijun_low) / 2.0;
 
-        // Calcul du Senkou Span B (projeté en avant)
-        int senkou_b_high_index = iHighest(Symbol(), Period(), MODE_HIGH, Ichimoku_Senkou, i);
-        int senkou_b_low_index  = iLowest(Symbol(), Period(), MODE_LOW,  Ichimoku_Senkou, i);
-        double senkou_span_b = (high[senkou_b_high_index] + low[senkou_b_low_index]) / 2.0;
+      // Calcul du Senkou Span A (projeté en avant)
+      double senkou_span_a = (tenkan_sen + kijun_sen) / 2.0;
 
-        // Décalage pour la projection future
-        datetime time_shifted = time[i + kijun_shift];
+      // Calcul du Senkou Span B (projeté en avant)
+      double senkou_b_high = Highest(high, senkou_period, i);
+      double senkou_b_low = Lowest(low, senkou_period, i);
+      double senkou_span_b = (senkou_b_high + senkou_b_low) / 2.0;
 
-        // Créer les objets pour les bords du nuage
-        string name_span_a = cloud_object_prefix + "SenkouA_" + string(i);
-        ObjectCreate(0, name_span_a, ENUM_OBJECT::OBJ_LINE, 0, time_shifted, senkou_span_a);
-        ObjectSetInteger(0, name_span_a, OBJPROP_COLOR, clrSandyBrown);
-        ObjectSetInteger(0, name_span_a, OBJPROP_WIDTH, 1);
+      // Décalage pour la projection future
+      datetime time_shifted = time[i + kijun_shift];
 
-        string name_span_b = cloud_object_prefix + "SenkouB_" + string(i);
-        ObjectCreate(0, name_span_b, ENUM_OBJECT::OBJ_LINE, 0, time_shifted, senkou_span_b);
-        ObjectSetInteger(0, name_span_b, OBJPROP_COLOR, clrThistle);
-        ObjectSetInteger(0, name_span_b, OBJPROP_WIDTH, 1);
-    }
+      // Créer les objets pour les bords du nuage (Senkou Span A et B)
+      string name_span_a = cloud_object_prefix + "SenkouA_" + IntegerToString(i);
+      string name_span_b = cloud_object_prefix + "SenkouB_" + IntegerToString(i);
+
+      // Créer la ligne pour Senkou Span A
+      if (!ObjectCreate(0, name_span_a, OBJ_HLINE, 0, 0, senkou_span_a))
+      {
+         Print("Erreur lors de la création de la ligne Senkou Span A : ", name_span_a);
+         continue;
+      }
+      ObjectSetInteger(0, name_span_a, OBJPROP_COLOR, clrSandyBrown);
+      ObjectSetInteger(0, name_span_a, OBJPROP_STYLE, STYLE_SOLID);
+      ObjectSetInteger(0, name_span_a, OBJPROP_WIDTH, 1);
+
+      // Créer la ligne pour Senkou Span B
+      if (!ObjectCreate(0, name_span_b, OBJ_HLINE, 0, 0, senkou_span_b))
+      {
+         Print("Erreur lors de la création de la ligne Senkou Span B : ", name_span_b);
+         continue;
+      }
+      ObjectSetInteger(0, name_span_b, OBJPROP_COLOR, clrThistle);
+      ObjectSetInteger(0, name_span_b, OBJPROP_STYLE, STYLE_SOLID);
+      ObjectSetInteger(0, name_span_b, OBJPROP_WIDTH, 1);
+   }
 }
 
 //+------------------------------------------------------------------+
