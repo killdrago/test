@@ -69,11 +69,12 @@ input long    MaxSpreadPoints         = 20;              // Spread maximum autor
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
 
 input string  trend_settings          = "=== Méthode de détermination de la tendance ===";
+input bool UseTrendDetection          = true;            // activer ou désactiver la détection de tendance
+input bool    DisplayOnChart          = true;            // Afficher les indicateurs sur le graphique
 enum TrendMethod {Ichimoku, MA};
 input TrendMethod TrendMethodChoice   = Ichimoku;  // Choix de la méthode de tendance
 input ENUM_TIMEFRAMES TrendTimeframe  = PERIOD_D1;       // Unité de temps pour la tendance
 input int     TrendMA_Period          = 200;             // Période de la MM pour la tendance
-input bool    DisplayOnChart          = true;            // Afficher les indicateurs sur le graphique
 
 input string  strategy_settings       = "=== Stratégie de trading ===";
 enum StrategyType {MA_Crossover, RSI_OSOB, FVG_Strategy};
@@ -166,6 +167,7 @@ int           Ichimoku_Handle[]; // Handles pour l'Ichimoku
 //--- Enumérations personnalisées
 enum MarketTrend { TrendHaussiere, TrendBaissiere, Indecis };
 enum CrossSignal { Achat, Vente, Aucun };
+
 
 //+------------------------------------------------------------------+
 //| Fonction d'initialisation de l'expert                            |
@@ -594,8 +596,20 @@ void CheckForNewSignals()
       return;
    }
 
-   // Obtenir la tendance
-   MarketTrend trend = GetMarketTrend(Symbol(), 0);
+   // Variable pour stocker la tendance
+   MarketTrend trend = Indecis; // Assurez-vous que cette valeur par défaut est correcte
+
+   // Vérifier si la détection de tendance est activée
+   if (UseTrendDetection)
+   {
+      // Obtenir la tendance
+      trend = GetMarketTrend(Symbol(), 0);
+      Print("Tendance détectée : ", EnumToString(trend));
+   }
+   else
+   {
+      Print("Détection de tendance désactivée.");
+   }
 
    // Vérifier le signal selon la stratégie choisie
    CrossSignal signal = CheckStrategySignal(Symbol(), 0);
