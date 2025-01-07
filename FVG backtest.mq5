@@ -626,37 +626,39 @@ void CheckForNewSignals()
          return;
       }
 
-      // Ouvrir la position en fonction du type de Stop Loss
-      if (StopLossType == SL_Classique)
+      // Vérifier la tendance avant de prendre des décisions d'achat ou de vente
+      if (signal == Achat && trend != TrendBaissiere)
       {
-         if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+         // Ouvrir la position avec Stop Loss Classique
+         if (StopLossType == SL_Classique)
          {
-            Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+            {
+               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+            }
          }
+         // Ajoutez d'autres types de Stop Loss ici si nécessaire
       }
-      else if (StopLossType == SL_Suiveur)
+      else if (signal == Vente && trend != TrendHaussiere)
       {
-         if (OpenPositionWithTrailingSL(Symbol(), signal, volume))
+         // Ouvrir la position avec Stop Loss Classique
+         if (StopLossType == SL_Classique)
          {
-            Print("Position ouverte avec Stop Loss Suiveur pour ", Symbol());
+            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+            {
+               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+            }
          }
-      }
-      else if (StopLossType == GridTrading)
-      {
-         if (OpenPositionWithGridTrading(Symbol(), signal, volume))
-         {
-            Print("Position ouverte avec Grid Trading pour ", Symbol());
-         }
+         // Ajoutez d'autres types de Stop Loss ici si nécessaire
       }
       else
       {
-         Print("Type de Stop Loss non reconnu.");
+         Print("Signal non pris en compte en raison de la tendance du marché.");
       }
    }
 
    Print("Fin de CheckForNewSignals");
 }
-
 
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier les nouveaux signaux pour le symbole actuel |
@@ -1574,10 +1576,96 @@ void MoveInfoTable(string symbol, int xDistance, int yDistance)
 }
 
 //+------------------------------------------------------------------+
-//| Fonction pour dessiner le cadre d'affichage                     |
+//| Fonction pour dessiner le cadre d'affichage                       |
 //+------------------------------------------------------------------+
 void DrawDisplayFrame()
 {
+   // Supprimer tous les indicateurs précédents
+   IndicatorsDeleteAll(0);
+
+   // Afficher l'indicateur en fonction de la stratégie de trading choisie
+   if (TrendMethodChoice == RSI)
+   {
+      // Créer et afficher l'indicateur RSI
+      int rsiHandle = iRSI(Symbol(), TrendTimeframe, RSI_Period, PRICE_CLOSE);
+      if (rsiHandle != INVALID_HANDLE)
+      {
+         if (ChartIndicatorAdd(0, 0, rsiHandle) != -1)
+         {
+            Print("Indicateur RSI ajouté au graphique.");
+         }
+         else
+         {
+            Print("Erreur lors de l'ajout de l'indicateur RSI au graphique.");
+         }
+      }
+      else
+      {
+         Print("Erreur lors de la création de l'indicateur RSI.");
+      }
+   }
+   else if (TrendMethodChoice == MA)
+   {
+      // Créer et afficher les indicateurs MA
+      int maShortHandle = iMA(Symbol(), TrendTimeframe, MA_ShortPeriod, 0, MODE_SMA, PRICE_CLOSE);
+      int maLongHandle = iMA(Symbol(), TrendTimeframe, MA_LongPeriod, 0, MODE_SMA, PRICE_CLOSE);
+      if (maShortHandle != INVALID_HANDLE && maLongHandle != INVALID_HANDLE)
+      {
+         if (ChartIndicatorAdd(0, 0, maShortHandle) != -1 && ChartIndicatorAdd(0, 0, maLongHandle) != -1)
+         {
+            Print("Indicateurs MA ajoutés au graphique.");
+         }
+         else
+         {
+            Print("Erreur lors de l'ajout des indicateurs MA au graphique.");
+         }
+      }
+      else
+      {
+         Print("Erreur lors de la création des indicateurs MA.");
+      }
+   }
+   else if (TrendMethodChoice == FVG)
+   {
+      // Créer et afficher l'indicateur FVG
+      int fvgHandle = iCustom(Symbol(), TrendTimeframe, "FVG");
+      if (fvgHandle != INVALID_HANDLE)
+      {
+         if (ChartIndicatorAdd(0, 0, fvgHandle) != -1)
+         {
+            Print("Indicateur FVG ajouté au graphique.");
+         }
+         else
+         {
+            Print("Erreur lors de l'ajout de l'indicateur FVG au graphique.");
+         }
+      }
+      else
+      {
+         Print("Erreur lors de la création de l'indicateur FVG.");
+      }
+   }
+   else if (TrendMethodChoice == Ichimoku)
+   {
+      // Créer et afficher l'indicateur Ichimoku
+      int ichimokuHandle = iIchimoku(Symbol(), TrendTimeframe, 9, 26, 52);
+      if (ichimokuHandle != INVALID_HANDLE)
+      {
+         if (ChartIndicatorAdd(0, 0, ichimokuHandle) != -1)
+         {
+            Print("Indicateur Ichimoku ajouté au graphique.");
+         }
+         else
+         {
+            Print("Erreur lors de l'ajout de l'indicateur Ichimoku au graphique.");
+         }
+      }
+      else
+      {
+         Print("Erreur lors de la création de l'indicateur Ichimoku.");
+      }
+   }
+
     // Récupérer la taille de la fenêtre du graphique
     long chartWidth  = ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
     long chartHeight = ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
