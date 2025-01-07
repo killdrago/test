@@ -219,6 +219,18 @@ void OnDeinit(const int reason)
 
    // Afficher le message de déinitialisation
    Print("Expert Advisor déinitialisé");
+
+if(Ichimoku)
+{
+    // Supprimer d'abord les objets MA s'ils existent
+    ObjectsDeleteAll(MA); // Remplacez "MA_Object" par le nom de l'objet MA
+}
+
+if(MA)
+{
+    // Supprimer d'abord les objets Ichimoku s'ils existent
+    ObjectsDeleteAll(Ichimoku); // Remplacez "Ichimoku_Object" par le nom de l'objet Ichimoku
+}
 }
 
 //+------------------------------------------------------------------+
