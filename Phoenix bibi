@@ -8,6 +8,23 @@
 #property version   "1.00"
 #property strict
 
+//--- ichimoku indicateur
+#property indicator_chart_window
+#property indicator_buffers 5
+#property indicator_plots   4
+#property indicator_type1   DRAW_LINE
+#property indicator_type2   DRAW_LINE
+#property indicator_type3   DRAW_FILLING
+#property indicator_type4   DRAW_LINE
+#property indicator_color1  Red
+#property indicator_color2  Blue
+#property indicator_color3  SandyBrown,Thistle
+#property indicator_color4  Lime
+#property indicator_label1  "Tenkan-sen"
+#property indicator_label2  "Kijun-sen"
+#property indicator_label3  "Senkou Span A;Senkou Span B"
+#property indicator_label4  "Chikou Span"
+
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Arrays\ArrayInt.mqh>
@@ -144,9 +161,15 @@ double adjusted_InpRespirationSL = 0.0;
 double adjusted_InpSLsuiveur = 0.0;
 
 //--- Constantes pour Ichimoku (tendance)
-const int Ichimoku_Tenkan = 9;   // Période Tenkan-sen pour la tendance (fixe)
-const int Ichimoku_Kijun  = 26;  // Période Kijun-sen pour la tendance (fixe)
-const int Ichimoku_Senkou = 52;  // Période Senkou Span B pour la tendance (fixe)
+input int Ichimoku_Tenkan = 9;   // Période Tenkan-sen pour la tendance (fixe)
+input int Ichimoku_Kijun  = 26;  // Période Kijun-sen pour la tendance (fixe)
+input int Ichimoku_Senkou = 52;  // Période Senkou Span B pour la tendance (fixe)
+//--- indicateur ichimoku buffers
+double    ExtTenkanBuffer[];
+double    ExtKijunBuffer[];
+double    ExtSpanABuffer[];
+double    ExtSpanBBuffer[];
+double    ExtChikouBuffer[];
 
 //--- Variables globales pour la martingale
 int MartingaleAttempts[]; // Tableau pour suivre les tentatives de martingale par symbole
@@ -168,12 +191,31 @@ int           Ichimoku_Handle[]; // Handles pour l'Ichimoku
 enum MarketTrend { TrendHaussiere, TrendBaissiere, Indecis };
 enum CrossSignal { Achat, Vente, Aucun };
 
-
+ 
 //+------------------------------------------------------------------+
 //| Fonction d'initialisation de l'expert                            |
 //+------------------------------------------------------------------+
 int OnInit()
 {
+    //--- indicator buffers mapping
+   SetIndexBuffer(0,ExtTenkanBuffer,INDICATOR_DATA);
+   SetIndexBuffer(1,ExtKijunBuffer,INDICATOR_DATA);
+   SetIndexBuffer(2,ExtSpanABuffer,INDICATOR_DATA);
+   SetIndexBuffer(3,ExtSpanBBuffer,INDICATOR_DATA);
+   SetIndexBuffer(4,ExtChikouBuffer,INDICATOR_DATA);
+//---
+   IndicatorSetInteger(INDICATOR_DIGITS,_Digits+1);
+//--- sets first bar from what index will be drawn
+   PlotIndexSetInteger(0,PLOT_DRAW_BEGIN,Ichimoku_Tenkan);
+   PlotIndexSetInteger(1,PLOT_DRAW_BEGIN,Ichimoku_Kijun);
+   PlotIndexSetInteger(2,PLOT_DRAW_BEGIN,Ichimoku_Senkou-1);
+//--- lines shifts when drawing
+   PlotIndexSetInteger(2,PLOT_SHIFT,Ichimoku_Kijun);
+   PlotIndexSetInteger(3,PLOT_SHIFT,-Ichimoku_Kijun);
+//--- change labels for DataWindow
+   PlotIndexSetString(0,PLOT_LABEL,"Tenkan-sen("+string(Ichimoku_Tenkan)+")");
+   PlotIndexSetString(1,PLOT_LABEL,"Kijun-sen("+string(Ichimoku_Kijun)+")");
+   PlotIndexSetString(2,PLOT_LABEL,"Senkou Span A;Senkou Span B("+string(Ichimoku_Senkou)+")");
     // Initialisation des handles pour Ichimoku
     int ichimokuHandle = iIchimoku(Symbol(), TrendTimeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
     if (ichimokuHandle == INVALID_HANDLE)
@@ -1351,43 +1393,70 @@ void ManageGridTrading(CPositionInfo &pos, double &gridDistancePercentage, doubl
 }
 
 //+------------------------------------------------------------------+
+// Fonctions utilitaires pour indicateur ichimoku                    |
+//+------------------------------------------------------------------+
+// Fonctions utilitaires au niveau global
+double Highest(const double& array[], const int range, int from_index)
+{
+   double res = 0;
+   res = array[from_index];
+   for(int i = from_index; i > from_index-range && i >= 0; i--)
+      if(res < array[i])
+         res = array[i];
+   return res;
+}
+
+double Lowest(const double& array[], const int range, int from_index)
+{
+   double res = 0;
+   res = array[from_index];
+   for(int i = from_index; i > from_index-range && i >= 0; i--)
+      if(res > array[i])
+         res = array[i];
+   return res;
+}
+
+//+------------------------------------------------------------------+
 //| Fonction pour afficher le nuage Ichimoku sur le graphique         |
 //+------------------------------------------------------------------+
 void DisplayIchimokuOnChart()
 {
    string symbol = Symbol();
-   ENUM_TIMEFRAMES timeframe = TrendTimeframe;
+   ENUM_TIMEFRAMES calcTimeframe = TrendTimeframe;
 
-   // Supprimer les objets existants pour éviter les doublons
-   ObjectsDeleteAll(0, "Ichimoku*");
-
-   // Obtenir les buffers Ichimoku (uniquement Senkou Span A et B)
-   double senkouSpanA[], senkouSpanB[];
-
-   ArraySetAsSeries(senkouSpanA, true);
-   ArraySetAsSeries(senkouSpanB, true);
-
-   int ichimokuHandle = iIchimoku(symbol, timeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
-
-   if (CopyBuffer(ichimokuHandle, 2, 0, 100, senkouSpanA) <= 0 ||
-       CopyBuffer(ichimokuHandle, 3, 0, 100, senkouSpanB) <= 0)
+   // Supprimer l'ancien indicateur s'il existe
+   int total = ChartIndicatorsTotal(0, 0);
+   for(int i = total-1; i >= 0; i--)
    {
-       Print("Erreur lors de la copie des données Ichimoku pour l'affichage sur le graphique");
+      string indName = ChartIndicatorName(0, 0, i);
+      if(StringFind(indName, "CustomIchimoku") >= 0)
+      {
+         ChartIndicatorDelete(0, 0, indName);
+      }
+   }
+
+   // Créer l'indicateur personnalisé avec les bons paramètres
+   int handle = iCustom(symbol, calcTimeframe, "CustomIchimoku",  // Assurez-vous que ce fichier existe
+                       Ichimoku_Tenkan,
+                       Ichimoku_Kijun,
+                       Ichimoku_Senkou);
+
+   if(handle == INVALID_HANDLE)
+   {
+      Print("Erreur création indicateur - Error:", GetLastError());
       return;
    }
 
-   // Afficher le nuage Ichimoku (Senkou Span A et B)
-   for (int i = 0; i < ArraySize(senkouSpanA) - 1; i++)
+   // Attacher l'indicateur au graphique
+   if(!ChartIndicatorAdd(0, 0, handle))
    {
-      if (senkouSpanA[i] != EMPTY_VALUE && senkouSpanA[i + 1] != EMPTY_VALUE &&
-          senkouSpanB[i] != EMPTY_VALUE && senkouSpanB[i + 1] != EMPTY_VALUE)
-      {
-         ObjectCreate(0, "Ichimoku_Cloud_" + (string)i, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i), MathMin(senkouSpanA[i], senkouSpanB[i]), iTime(symbol, timeframe, i + 1), MathMax(senkouSpanA[i + 1], senkouSpanB[i + 1]));
-         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_COLOR, (senkouSpanA[i] > senkouSpanB[i]) ? clrLimeGreen : clrRed);
-         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_FILL, true);
-         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_BACK, true);
-      }
+      Print("Erreur ajout indicateur au graphique - Error:", GetLastError());
+      IndicatorRelease(handle);
+      return;
    }
+
+   IndicatorRelease(handle);
+   ChartRedraw(0);
 }
 
 //+------------------------------------------------------------------+
