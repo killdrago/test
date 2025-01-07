@@ -283,67 +283,85 @@ if(MA)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-datetime timeArray[];
-ArraySetAsSeries(timeArray, true);
-int copied = CopyTime(Symbol(), Period(), 0, 100, timeArray);
-if (copied > 0)
+   // Déclarer les tableaux pour les prix hauts, bas et les timestamps
+   double highArray[];
+   double lowArray[];
+   datetime timeArray[];
 
+   // Configurer les tableaux comme des séries temporelles
+   ArraySetAsSeries(highArray, true);
+   ArraySetAsSeries(lowArray, true);
+   ArraySetAsSeries(timeArray, true);
+
+   // Copier les données de prix et de temps
+   int copiedHigh = CopyHigh(Symbol(), Period(), 0, 100, highArray);
+   int copiedLow = CopyLow(Symbol(), Period(), 0, 100, lowArray);
+   int copiedTime = CopyTime(Symbol(), Period(), 0, 100, timeArray);
+
+   // Vérifier si les données ont été copiées avec succès
+   if (copiedHigh > 0 && copiedLow > 0 && copiedTime > 0)
+   {
       // Afficher les indicateurs sur le graphique si demandé
-   if (DisplayOnChart)
-   {
-        if (TrendMethodChoice == Ichimoku)
-        {
-            DisplayIchimokuOnChart(High, Low, timeArray);
-        }
-      else if (TrendMethodChoice == MA)
+      if (DisplayOnChart)
       {
-         DisplayMAOnChart();
+         if (TrendMethodChoice == Ichimoku)
+         {
+            DisplayIchimokuOnChart(highArray, lowArray, timeArray);
+         }
+         else if (TrendMethodChoice == MA)
+         {
+            DisplayMAOnChart();
+         }
       }
-   }
-   // Mettre à jour l'affichage (tableau d'informations, lignes horizontales, etc.)
-   if (DisplayTable)
-   {
-      DrawDisplayFrame();
-   }
 
-   // Vérifier les conditions de marché
-   if (!IsMarketConditionsSuitable())
-   {
-      Print("Conditions de marché non favorables.");
-      return;
-   }
+      // Mettre à jour l'affichage (tableau d'informations, lignes horizontales, etc.)
+      if (DisplayTable)
+      {
+         DrawDisplayFrame();
+      }
 
-   // Vérifier si nous sommes sur une nouvelle minute
-   datetime currentTime = TimeCurrent();
-   if (currentTime > lastMinuteChecked + 60)
-   {
-      isNewMinute = true;
-      lastMinuteChecked = currentTime;
+      // Vérifier les conditions de marché
+      if (!IsMarketConditionsSuitable())
+      {
+         Print("Conditions de marché non favorables.");
+         return;
+      }
+
+      // Vérifier si nous sommes sur une nouvelle minute
+      datetime currentTime = TimeCurrent();
+      if (currentTime > lastMinuteChecked + 60)
+      {
+         isNewMinute = true;
+         lastMinuteChecked = currentTime;
+      }
+      else
+      {
+         isNewMinute = false;
+      }
+
+      // Mettre à jour les positions existantes (gestion des stops, etc.)
+      UpdateExistingPositions();
+
+      // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
+      if (!isNewMinute)
+      {
+         return; // Ne pas afficher de message, simplement sortir de la fonction
+      }
+
+      // Vérifier les actualités importantes
+      if (UseNewsFilter && IsThereNews(Symbol()))
+      {
+         Print("Actualités importantes détectées, trading évité.");
+         return;
+      }
+
+      // Vérifier les signaux et ouvrir des positions si nécessaire
+      CheckForNewSignals();
    }
    else
    {
-      isNewMinute = false;
+      Print("Erreur lors de la copie des données de prix ou de temps.");
    }
-
-   // Mettre à jour les positions existantes (gestion des stops, etc.)
-   UpdateExistingPositions();
-
-   // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
-   if (!isNewMinute)
-   {
-      return; // Ne pas afficher de message, simplement sortir de la fonction
-   }
-
-   // Vérifier les actualités importantes
-   if (UseNewsFilter && IsThereNews(Symbol()))
-   {
-      Print("Actualités importantes détectées, trading évité.");
-      return;
-   }
-
-   // Vérifier les signaux et ouvrir des positions si nécessaire
-   CheckForNewSignals();
-
 }
 
 //+------------------------------------------------------------------+
