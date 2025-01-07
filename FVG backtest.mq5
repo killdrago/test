@@ -69,11 +69,12 @@ input long    MaxSpreadPoints         = 20;              // Spread maximum autor
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
 
 input string  trend_settings          = "=== Méthode de détermination de la tendance ===";
+input bool UseTrendDetection = true; // Paramètre d'entrée pour activer ou désactiver la détection de tendance
+input bool    DisplayOnChart          = true;            // Afficher les indicateurs sur le graphique
 enum TrendMethod {Ichimoku, MA};
 input TrendMethod TrendMethodChoice   = Ichimoku;  // Choix de la méthode de tendance
 input ENUM_TIMEFRAMES TrendTimeframe  = PERIOD_D1;       // Unité de temps pour la tendance
 input int     TrendMA_Period          = 200;             // Période de la MM pour la tendance
-input bool    DisplayOnChart          = true;            // Afficher les indicateurs sur le graphique
 
 input string  strategy_settings       = "=== Stratégie de trading ===";
 enum StrategyType {MA_Crossover, RSI_OSOB, FVG_Strategy};
@@ -172,6 +173,7 @@ enum CrossSignal { Achat, Vente, Aucun };
 //+------------------------------------------------------------------+
 int OnInit()
 {
+    useTrendDetection = GetInputParameter("UseTrendDetection", useTrendDetection);
     // Initialisation des handles pour Ichimoku
     int ichimokuHandle = iIchimoku(Symbol(), TrendTimeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
     if (ichimokuHandle == INVALID_HANDLE)
@@ -224,66 +226,100 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+    // Afficher les indicateurs sur le graphique si demandé
+    if (DisplayOnChart)
+    {
+        if (TrendMethodChoice == Ichimoku)
+        {
+            DisplayIchimokuOnChart();
+        }
+        else if (TrendMethodChoice == MA)
+        {
+            DisplayMAOnChart();
+        }
+    }
 
-      // Afficher les indicateurs sur le graphique si demandé
-   if (DisplayOnChart)
-   {
-      if (TrendMethodChoice == Ichimoku)
-      {
-         DisplayIchimokuOnChart();
-      }
-      else if (TrendMethodChoice == MA)
-      {
-         DisplayMAOnChart();
-      }
-   }
-   // Mettre à jour l'affichage (tableau d'informations, lignes horizontales, etc.)
-   if (DisplayTable)
-   {
-      DrawDisplayFrame();
-   }
-   
-   // Vérifier les conditions de marché
-   if (!IsMarketConditionsSuitable())
-   {
-      Print("Conditions de marché non favorables.");
-      return;
-   }
+    // Mettre à jour l'affichage (tableau d'informations, lignes horizontales, etc.)
+    if (DisplayTable)
+    {
+        DrawDisplayFrame();
+    }
 
-   // Vérifier si nous sommes sur une nouvelle minute
-   datetime currentTime = TimeCurrent();
-   if (currentTime > lastMinuteChecked + 60)
-   {
-      isNewMinute = true;
-      lastMinuteChecked = currentTime;
-   }
-   else
-   {
-      isNewMinute = false;
-   }
+    // Vérifier les conditions de marché
+    if (!IsMarketConditionsSuitable())
+    {
+        Print("Conditions de marché non favorables.");
+        return;
+    }
 
-   // Mettre à jour les positions existantes (gestion des stops, etc.)
-   UpdateExistingPositions();
+    // Vérifier si nous sommes sur une nouvelle minute
+    datetime currentTime = TimeCurrent();
+    if (currentTime > lastMinuteChecked + 60)
+    {
+        isNewMinute = true;
+        lastMinuteChecked = currentTime;
+    }
+    else
+    {
+        isNewMinute = false;
+    }
 
-   // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
-   if (!isNewMinute)
-   {
-      return; // Ne pas afficher de message, simplement sortir de la fonction
-   }
+    // Mettre à jour les positions existantes (gestion des stops, etc.)
+    UpdateExistingPositions();
 
-   // Vérifier les actualités importantes
-   if (UseNewsFilter && IsThereNews(Symbol()))
-   {
-      Print("Actualités importantes détectées, trading évité.");
-      return;
-   }
-   
-   // Vérifier les signaux et ouvrir des positions si nécessaire
-   CheckForNewSignals();
-   
-    
-   
+    // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
+    if (!isNewMinute)
+    {
+        return; // Ne pas afficher de message, simplement sortir de la fonction
+    }
+
+    // Vérifier les actualités importantes
+    if (UseNewsFilter && IsThereNews(Symbol()))
+    {
+        Print("Actualités importantes détectées, trading évité.");
+        return;
+    }
+
+    // Vérification si la détection de tendance est activée
+    if (UseTrendDetection)
+    {
+        // Appel de la méthode de détermination de la tendance
+        DetermineTrend();
+    }
+
+    // Vérifier les signaux et ouvrir des positions si nécessaire
+    CheckForNewSignals();
 }
+
+//+------------------------------------------------------------------+
+// Méthode de détermination de la tendance                           |
+//+------------------------------------------------------------------+
+void DetermineTrend()
+{
+    // Votre logique de détermination de la tendance ici
+    // Par exemple :
+    double ma1 = iMA(NULL, 0, 14, 0, MODE_SMA, PRICE_CLOSE, 0);
+    double ma2 = iMA(NULL, 0, 30, 0, MODE_SMA, PRICE_CLOSE, 0);
+
+    if (ma1 > ma2)
+    {
+        // Tendance haussière
+        Print("Tendance haussière détectée");
+    }
+    else if (ma1 < ma2)
+    {
+        // Tendance baissière
+        Print("Tendance baissière détectée");
+    }
+    else
+    {
+        // Pas de tendance claire
+        Print("Pas de tendance claire");
+    }
+}
+
+// Déclaration des variables globales
+input bool UseTrendDetection = true; // Paramètre d'entrée pour activer ou désactiver la détection de tendance
 
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier si les conditions de marché sont bonnes    |
@@ -642,6 +678,7 @@ void CheckForNewSignals()
 
    Print("Fin de CheckForNewSignals");
 }
+
 
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier les nouveaux signaux pour le symbole actuel |
@@ -2612,6 +2649,18 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
    }
    }
    return false;
+}
+//+------------------------------------------------------------------+
+// Fonction pour obtenir les paramètres d'entrée                     |
+//+------------------------------------------------------------------+
+bool GetInputParameter(string name, bool defaultValue)
+{
+    int index = GetParameterIndex(name);
+    if (index >= 0)
+    {
+        return (bool)GetParameterValue(index);
+    }
+    return defaultValue;
 }
 //+------------------------------------------------------------------+
 //| Fin du code                                                      |
