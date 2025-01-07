@@ -318,9 +318,6 @@ void DetermineTrend()
     }
 }
 
-// Déclaration des variables globales
-input bool UseTrendDetection = true; // Paramètre d'entrée pour activer ou désactiver la détection de tendance
-
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier si les conditions de marché sont bonnes    |
 //+------------------------------------------------------------------+
