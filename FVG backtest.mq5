@@ -69,12 +69,11 @@ input long    MaxSpreadPoints         = 20;              // Spread maximum autor
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
 
 input string  trend_settings          = "=== Méthode de détermination de la tendance ===";
-input bool UseTrendDetection          = true;            // activer ou désactiver la détection de tendance
-input bool    DisplayOnChart          = true;            // Afficher les indicateurs sur le graphique
 enum TrendMethod {Ichimoku, MA};
 input TrendMethod TrendMethodChoice   = Ichimoku;  // Choix de la méthode de tendance
 input ENUM_TIMEFRAMES TrendTimeframe  = PERIOD_D1;       // Unité de temps pour la tendance
 input int     TrendMA_Period          = 200;             // Période de la MM pour la tendance
+input bool    DisplayOnChart          = true;            // Afficher les indicateurs sur le graphique
 
 input string  strategy_settings       = "=== Stratégie de trading ===";
 enum StrategyType {MA_Crossover, RSI_OSOB, FVG_Strategy};
@@ -168,7 +167,6 @@ int           Ichimoku_Handle[]; // Handles pour l'Ichimoku
 enum MarketTrend { TrendHaussiere, TrendBaissiere, Indecis };
 enum CrossSignal { Achat, Vente, Aucun };
 
-
 //+------------------------------------------------------------------+
 //| Fonction d'initialisation de l'expert                            |
 //+------------------------------------------------------------------+
@@ -219,18 +217,6 @@ void OnDeinit(const int reason)
 
    // Afficher le message de déinitialisation
    Print("Expert Advisor déinitialisé");
-
-if(Ichimoku)
-{
-    // Supprimer d'abord les objets MA s'ils existent
-    ObjectsDeleteAll(MA); // Remplacez "MA_Object" par le nom de l'objet MA
-}
-
-if(MA)
-{
-    // Supprimer d'abord les objets Ichimoku s'ils existent
-    ObjectsDeleteAll(Ichimoku); // Remplacez "Ichimoku_Object" par le nom de l'objet Ichimoku
-}
 }
 
 //+------------------------------------------------------------------+
@@ -608,20 +594,8 @@ void CheckForNewSignals()
       return;
    }
 
-   // Variable pour stocker la tendance
-   MarketTrend trend = Indecis; // Assurez-vous que cette valeur par défaut est correcte
-
-   // Vérifier si la détection de tendance est activée
-   if (UseTrendDetection)
-   {
-      // Obtenir la tendance
-      trend = GetMarketTrend(Symbol(), 0);
-      Print("Tendance détectée : ", EnumToString(trend));
-   }
-   else
-   {
-      Print("Détection de tendance désactivée.");
-   }
+   // Obtenir la tendance
+   MarketTrend trend = GetMarketTrend(Symbol(), 0);
 
    // Vérifier le signal selon la stratégie choisie
    CrossSignal signal = CheckStrategySignal(Symbol(), 0);
@@ -638,34 +612,31 @@ void CheckForNewSignals()
          return;
       }
 
-      // Vérifier la tendance avant de prendre des décisions d'achat ou de vente
-      if (signal == Achat && trend != TrendBaissiere)
+      // Ouvrir la position en fonction du type de Stop Loss
+      if (StopLossType == SL_Classique)
       {
-         // Ouvrir la position avec Stop Loss Classique
-         if (StopLossType == SL_Classique)
+         if (OpenPositionWithClassicSL(Symbol(), signal, volume))
          {
-            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
-            {
-               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
-            }
+            Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
          }
-         // Ajoutez d'autres types de Stop Loss ici si nécessaire
       }
-      else if (signal == Vente && trend != TrendHaussiere)
+      else if (StopLossType == SL_Suiveur)
       {
-         // Ouvrir la position avec Stop Loss Classique
-         if (StopLossType == SL_Classique)
+         if (OpenPositionWithTrailingSL(Symbol(), signal, volume))
          {
-            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
-            {
-               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
-            }
+            Print("Position ouverte avec Stop Loss Suiveur pour ", Symbol());
          }
-         // Ajoutez d'autres types de Stop Loss ici si nécessaire
+      }
+      else if (StopLossType == GridTrading)
+      {
+         if (OpenPositionWithGridTrading(Symbol(), signal, volume))
+         {
+            Print("Position ouverte avec Grid Trading pour ", Symbol());
+         }
       }
       else
       {
-         Print("Signal non pris en compte en raison de la tendance du marché.");
+         Print("Type de Stop Loss non reconnu.");
       }
    }
 
@@ -2622,13 +2593,12 @@ bool OpenPositionWithTrailingSL(string symbol, CrossSignal signal, double volume
 //+------------------------------------------------------------------+
 bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
 {
-   if (PositionSelect(_Symbol) == true)
+   if (IsPositionOpen(symbol))
    {
       Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
       return false;
    }
-   else
-   {
+
    double sl = 0.0, tp = 0.0;
    double slPercentage = 0.0, tpPercentage = 0.0, slPoints = 0.0, tpPoints = 0.0;
 
@@ -2638,7 +2608,6 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
    {
       Print("Position ouverte avec Stop Loss Classique pour ", symbol);
       return true;
-   }
    }
    return false;
 }
