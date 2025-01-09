@@ -75,9 +75,6 @@ enum TrendMethod {Ichimoku, MA};
 input TrendMethod TrendMethodChoice   = Ichimoku; // Choix de la méthode de tendance
 input ENUM_TIMEFRAMES TrendTimeframe  = PERIOD_D1; // Unité de temps pour la tendance
 input int TrendMA_Period              = 200; // Période de la MM pour la tendance
-input color ichimokuH                 = clrBlue; // Couleur du nuage ichimoku haussier
-input color ichimokuB                 = clrRed; // Couleur du nuage ichimoku baissier
-input color MA                        = clrRed; // Couleur de la moyenne mobile
 
 input string  strategy_settings       = "=== Stratégie de trading ===";
 enum StrategyType {MA_Crossover, RSI_OSOB, FVG_Strategy};
@@ -186,31 +183,17 @@ void SetIndicatorVisibility()
    {
       string objName = ObjectName(0, i);
 
-      if (StringFind(objName, "Ichimoku_Cloud_") >= 0) // ✅ Gérer les objets Ichimoku
+      if (StringFind(objName, "Ichimoku_") >= 0 || StringFind(objName, "MA_") >= 0)
       {
-         Print("Modification de la visibilité de Ichimoku : ", objName, " -> ", UseTrendDetection);
-         if (UseTrendDetection)
+         Print("Modification de la visibilité de : ", objName, " -> ", UseTrendDetection);
+
+         if (UseTrendDetection) // ✅ Si la détection de tendance est activée
          {
-            if (StringFind(objName, "Bullish") >= 0) // ✅ Si c'est un nuage haussier
-               ObjectSetInteger(0, objName, OBJPROP_COLOR, ichimokuH);
-            else // ✅ Sinon, c'est un nuage baissier
-               ObjectSetInteger(0, objName, OBJPROP_COLOR, ichimokuB);
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrWhite); // ✅ Afficher l'indicateur
          }
-         else
+         else // ✅ Sinon, masquer l'indicateur
          {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrNONE); // ✅ Masquer Ichimoku
-         }
-      }
-      else if (StringFind(objName, "MA_Trend_") >= 0) // ✅ Gérer la Moyenne Mobile
-      {
-         Print("Modification de la visibilité de la MA : ", objName, " -> ", UseTrendDetection);
-         if (UseTrendDetection)
-         {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, MA); // ✅ Appliquer la couleur MA
-         }
-         else
-         {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrNONE); // ✅ Masquer la MA
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrNONE); // ✅ Rendre invisible
          }
       }
    }
@@ -284,7 +267,7 @@ void OnTick()
 {
    static int currentTrendMethod = -1; // Stocke l'indicateur actuellement affiché
 
-   // ✅ Appliquer la visibilité des indicateurs en fonction de UseTrendDetection
+   // ✅ Gérer la visibilité des indicateurs en fonction de UseTrendDetection
    SetIndicatorVisibility();
 
    // ✅ Vérifier si l'indicateur sélectionné a changé et doit être mis à jour
