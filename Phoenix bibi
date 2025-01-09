@@ -75,6 +75,8 @@ enum TrendMethod {Ichimoku, MA};
 input TrendMethod TrendMethodChoice   = Ichimoku; // Choix de la méthode de tendance
 input ENUM_TIMEFRAMES TrendTimeframe  = PERIOD_D1; // Unité de temps pour la tendance
 input int TrendMA_Period              = 200; // Période de la MM pour la tendance
+input color TendanceH = clrBlue; // Couleur haussier
+input color TendanceB = clrRed; // Couleur baissier
 
 input string  strategy_settings       = "=== Stratégie de trading ===";
 enum StrategyType {MA_Crossover, RSI_OSOB, FVG_Strategy};
@@ -187,13 +189,13 @@ void SetIndicatorVisibility()
       {
          Print("Modification de la visibilité de : ", objName, " -> ", UseTrendDetection);
 
-         if (DisplayOnChart) // ✅ Si la détection de tendance est activée
+         if (DisplayOnChart) // Si la détection de tendance est activée
          {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrWhite); // ✅ Afficher l'indicateur
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrWhite); // Afficher l'indicateur
          }
-         else // ✅ Sinon, masquer l'indicateur
+         else // Sinon, masquer l'indicateur
          {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrNONE); // ✅ Rendre invisible
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrNONE); // Rendre invisible
          }
       }
    }
@@ -265,12 +267,12 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   static int localcurrentTrendMethod = -1;  // ou toute autre valeur
-
+   
+    static int localcurrentTrendMethod = -1;  // ou toute autre valeur
    // ✅ Gérer la visibilité des indicateurs en fonction de UseTrendDetection
    SetIndicatorVisibility();
 
-   // ✅ Vérifier si l'indicateur sélectionné a changé et doit être mis à jour
+   // Vérifier si l'indicateur sélectionné a changé et doit être mis à jour
    if (TrendMethodChoice != localcurrentTrendMethod)
    {
       RemoveAllIndicators(); // Supprimer les anciens indicateurs uniquement si on change
@@ -278,7 +280,7 @@ void OnTick()
       isIndicatorLoaded = false; // Indicateur doit être rechargé
    }
 
-   // ✅ Charger l'indicateur uniquement si ce n'est pas déjà fait
+   // Charger l'indicateur uniquement si ce n'est pas déjà fait
    if (DisplayOnChart && !isIndicatorLoaded)
    {
       if (TrendMethodChoice == Ichimoku)
@@ -292,20 +294,20 @@ void OnTick()
       isIndicatorLoaded = true; // Indique que l'indicateur est chargé
    }
 
-   // ✅ Toujours afficher le tableau si activé, indépendamment de UseTrendDetection
+   // Toujours afficher le tableau si activé, indépendamment de UseTrendDetection
    if (DisplayTable)
    {
       DrawDisplayFrame();
    }
 
-   // ✅ Vérifier si les conditions de marché sont favorables
+   // Vérifier si les conditions de marché sont favorables
    if (!IsMarketConditionsSuitable())
    {
       Print("Conditions de marché non favorables.");
       return;
    }
 
-   // ✅ Vérifier si nous sommes sur une nouvelle minute
+   // Vérifier si nous sommes sur une nouvelle minute
    datetime currentTime = TimeCurrent();
    if (currentTime > lastMinuteChecked + 60)
    {
@@ -317,23 +319,23 @@ void OnTick()
       isNewMinute = false;
    }
 
-   // ✅ Mettre à jour les positions existantes (gestion des stops, etc.)
+   // Mettre à jour les positions existantes (gestion des stops, etc.)
    UpdateExistingPositions();
 
-   // ✅ Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
+   // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
    if (!isNewMinute)
    {
       return;
    }
 
-   // ✅ Vérifier les actualités importantes
+   // Vérifier les actualités importantes
    if (UseNewsFilter && IsThereNews(Symbol()))
    {
       Print("Actualités importantes détectées, trading évité.");
       return;
    }
 
-   // ✅ Vérifier les signaux et ouvrir des positions si nécessaire
+   // Vérifier les signaux et ouvrir des positions si nécessaire
    CheckForNewSignals();
 }
 
@@ -1393,7 +1395,7 @@ void ManageGridTrading(CPositionInfo &pos, double &gridDistancePercentage, doubl
 //+------------------------------------------------------------------+
 void DisplayIchimokuOnChart()
 {
-   if (!DisplayOnChart) return; // ✅ Ne rien faire si l'affichage est désactivé
+   if (!DisplayOnChart) return; // Ne rien faire si l'affichage est désactivé
 
    string symbol = Symbol();
    ENUM_TIMEFRAMES timeframe = TrendTimeframe;
@@ -1415,14 +1417,21 @@ void DisplayIchimokuOnChart()
       if (senkouSpanA[i] != EMPTY_VALUE && senkouSpanB[i] != EMPTY_VALUE)
       {
          string objName = "Ichimoku_Cloud_" + IntegerToString(i);
-         Print("Création de l'objet Ichimoku : ", objName); // ✅ Vérification
+         Print("Création de l'objet Ichimoku : ", objName); // Vérification
 
          if (ObjectFind(0, objName) < 0)
          {
             ObjectCreate(0, objName, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i), MathMin(senkouSpanA[i], senkouSpanB[i]), iTime(symbol, timeframe, i + 1), MathMax(senkouSpanA[i + 1], senkouSpanB[i + 1]));
          }
 
-         ObjectSetInteger(0, objName, OBJPROP_HIDDEN, !DisplayOnChart); // ✅ Masquer/Afficher selon DisplayOnChart
+         // Déterminez la tendance
+         bool isHausse = (senkouSpanA[i] > senkouSpanB[i]);
+
+         // Définissez la couleur en fonction de la tendance
+         color objColor = (isHausse && UseTrendDetection) ? TendanceH : (isHausse ? clrBlue : clrRed);
+         ObjectSetInteger(0, objName, OBJPROP_COLOR, objColor);
+
+         ObjectSetInteger(0, objName, OBJPROP_HIDDEN, !DisplayOnChart); // Masquer/Afficher selon DisplayOnChart
       }
    }
 }
@@ -1432,7 +1441,7 @@ void DisplayIchimokuOnChart()
 //+------------------------------------------------------------------+
 void DisplayMAOnChart()
 {
-   if (!DisplayOnChart) return; // ✅ Ne rien faire si l'affichage est désactivé
+   if (!DisplayOnChart) return; // Ne rien faire si l'affichage est désactivé
 
    string symbol = Symbol();
    ENUM_TIMEFRAMES timeframe = TrendTimeframe;
@@ -1452,14 +1461,21 @@ void DisplayMAOnChart()
       if (maTrend[i] != EMPTY_VALUE)
       {
          string objName = "MA_Trend_" + IntegerToString(i);
-         Print("Création de l'objet MA : ", objName); // ✅ Vérification
+         Print("Création de l'objet MA : ", objName); // Vérification
 
          if (ObjectFind(0, objName) < 0)
          {
             ObjectCreate(0, objName, OBJ_TREND, 0, iTime(symbol, timeframe, i), maTrend[i], iTime(symbol, timeframe, i + 1), maTrend[i + 1]);
          }
 
-         ObjectSetInteger(0, objName, OBJPROP_HIDDEN, !DisplayOnChart); // ✅ Masquer/Afficher selon DisplayOnChart
+         // Déterminez la tendance
+         bool isHausse = (maTrend[i] > maTrend[i + 1]);
+
+         // Définissez la couleur en fonction de la tendance
+         color objColor = (isHausse && UseTrendDetection) ? TendanceB : (isHausse ? clrRed : TendanceH);
+         ObjectSetInteger(0, objName, OBJPROP_COLOR, objColor);
+
+         ObjectSetInteger(0, objName, OBJPROP_HIDDEN, !DisplayOnChart); // Masquer/Afficher selon DisplayOnChart
       }
    }
 }
