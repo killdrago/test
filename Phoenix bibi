@@ -2700,20 +2700,41 @@ void DetectTrendAndSetColor()
     // Vérification de la méthode de détection choisie
     if (TrendMethodChoice == Ichimoku)
     {
+        // Déclaration des buffers pour Tenkan-sen et Kijun-sen
+        double tenkanSenBuffer[], kijunSenBuffer[];
+
         // Calcul des lignes Ichimoku sur l'unité de temps choisie
-        double tenkan_sen = iIchimoku(NULL, TrendTimeframe, 9, 26, 52, MODE_TENKANSEN, 0);
-        double kijun_sen = iIchimoku(NULL, TrendTimeframe, 9, 26, 52, MODE_KIJUNSEN, 0);
+        int ichimokuHandle = iIchimoku(Symbol(), PERIOD_CURRENT, 9, 26, 52);
+
+        // Copier les valeurs de Tenkan-sen et Kijun-sen
+        CopyBuffer(ichimokuHandle, 0, 0, 3, tenkanSenBuffer);  // 0 = Tenkan
+        CopyBuffer(ichimokuHandle, 1, 0, 3, kijunSenBuffer);   // 1 = Kijun
 
         // Détection de tendance Ichimoku (Tenkan > Kijun : haussier, sinon baissier)
-        isBullish = (tenkan_sen > kijun_sen);
+        if (ArraySize(tenkanSenBuffer) > 0 && ArraySize(kijunSenBuffer) > 0)
+        {
+            isBullish = (tenkanSenBuffer[0] > kijunSenBuffer[0]);
+        }
     }
     else if (TrendMethodChoice == MA)
     {
         // Calcul de la Moyenne Mobile sur l'unité de temps choisie
-        double ma_value = iMA(NULL, TrendTimeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE, 0);
+        int handle = iMA(Symbol(), PERIOD_H1, 14, 0, MODE_SMA, PRICE_CLOSE);
 
-        // Détection de tendance MA (prix actuel > MA : haussier, sinon baissier)
-        isBullish = (Close[0] > ma_value);
+        // Copier les prix de clôture
+        double closePrices[];
+        CopyClose(Symbol(), PERIOD_H1, 0, 100, closePrices);
+
+        if (ArraySize(closePrices) > 0)
+        {
+            double maBuffer[];
+            CopyBuffer(handle, 0, 0, 1, maBuffer);
+            
+            if (ArraySize(maBuffer) > 0)
+            {
+                isBullish = (closePrices[0] > maBuffer[0]);
+            }
+        }
     }
 
     // Définir la couleur en fonction de la tendance
@@ -2722,7 +2743,7 @@ void DetectTrendAndSetColor()
     // Affichage sur le graphique si activé
     if (DisplayOnChart)
     {
-        // Exemple : Dessiner une ligne horizontale pour symboliser la tendance
+        // Dessiner une ligne horizontale pour symboliser la tendance
         DrawTrendLine(trendColor);
     }
 }
@@ -2738,11 +2759,17 @@ void DrawTrendLine(color trendColor)
     // Supprimer l'ancienne ligne si elle existe
     ObjectDelete(0, line_name);
 
+    // Copier les prix de clôture
+    double closePrices[];  // Tableau pour stocker les prix de clôture
+    CopyClose(Symbol(), PERIOD_CURRENT, 0, 1, closePrices);  // Copie du prix de clôture actuel
+
     // Ajouter une nouvelle ligne horizontale avec la couleur correspondant à la tendance
     ObjectCreate(0, line_name, OBJ_HLINE, 0, TimeCurrent(), 0);
     ObjectSetInteger(0, line_name, OBJPROP_COLOR, trendColor);
     ObjectSetInteger(0, line_name, OBJPROP_WIDTH, 2); // Épaisseur de la ligne
-    ObjectSetDouble(0, line_name, OBJPROP_PRICE, Close[0]); // Position de la ligne
+    ObjectSetDouble(0, line_name, OBJPROP_PRICE, closePrices[0]); // Position de la ligne basée sur le prix de clôture actuel
+
+    trend_line_id++;  // Incrémenter l'identifiant pour la prochaine ligne
 }
 
 //+------------------------------------------------------------------+
