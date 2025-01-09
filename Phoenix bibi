@@ -161,12 +161,25 @@ ulong         current_ticket    = 0;    // Pour suivre le ticket de la position 
 //--- Variables pour les handles des indicateurs
 int           MA_Handle1[];    // Handles pour les moyennes mobiles
 int           MA_Handle2[];
-int           MACD_Handle[];   // Handles pour le MACD
 int           Ichimoku_Handle[]; // Handles pour l'Ichimoku
 
 //--- Enumérations personnalisées
 enum MarketTrend { TrendHaussiere, TrendBaissiere, Indecis };
 enum CrossSignal { Achat, Vente, Aucun };
+
+//--- Stockage indicateur de tendance
+int currentTrendMethod = -1; // Stocke l'indicateur actuellement affiché (-1 = aucun au départ)
+bool isIndicatorLoaded = false; // Indique si l'indicateur est déjà chargé
+
+
+//+------------------------------------------------------------------+
+//| Fonction de suppression indic tendance                           |
+//+------------------------------------------------------------------+
+void RemoveAllIndicators()
+{
+   ObjectsDeleteAll(0, 0); // Supprime tous les objets du graphique
+   isIndicatorLoaded = false;
+}
 
 //+------------------------------------------------------------------+
 //| Fonction d'initialisation de l'expert                            |
@@ -225,9 +238,16 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   // Vérifier si l'indicateur a changé
+   if (TrendMethodChoice != currentTrendMethod)
+   {
+      RemoveAllIndicators(); // Supprimer les anciens indicateurs
+      currentTrendMethod = TrendMethodChoice; // Mettre à jour l'indicateur actuellement affiché
+      isIndicatorLoaded = false; // Indicateur doit être rechargé
+   }
 
-      // Afficher les indicateurs sur le graphique si demandé
-   if (DisplayOnChart)
+   // Charger l'indicateur uniquement si ce n'est pas déjà fait
+   if (DisplayOnChart && !isIndicatorLoaded)
    {
       if (TrendMethodChoice == Ichimoku)
       {
@@ -237,13 +257,15 @@ void OnTick()
       {
          DisplayMAOnChart();
       }
+      isIndicatorLoaded = true; // Indique que l'indicateur est chargé
    }
+
    // Mettre à jour l'affichage (tableau d'informations, lignes horizontales, etc.)
    if (DisplayTable)
    {
       DrawDisplayFrame();
    }
-   
+
    // Vérifier les conditions de marché
    if (!IsMarketConditionsSuitable())
    {
@@ -269,7 +291,7 @@ void OnTick()
    // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
    if (!isNewMinute)
    {
-      return; // Ne pas afficher de message, simplement sortir de la fonction
+      return;
    }
 
    // Vérifier les actualités importantes
@@ -278,12 +300,9 @@ void OnTick()
       Print("Actualités importantes détectées, trading évité.");
       return;
    }
-   
+
    // Vérifier les signaux et ouvrir des positions si nécessaire
    CheckForNewSignals();
-   
-    
-   
 }
 
 //+------------------------------------------------------------------+
