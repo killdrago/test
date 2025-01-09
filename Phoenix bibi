@@ -265,7 +265,7 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-currentTrendMethod = -1;  // ou toute autre valeur
+   static int currentTrendMethod = -1;  // ou toute autre valeur
 
    // ✅ Gérer la visibilité des indicateurs en fonction de UseTrendDetection
    SetIndicatorVisibility();
