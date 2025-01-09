@@ -187,7 +187,7 @@ void SetIndicatorVisibility()
       {
          Print("Modification de la visibilité de : ", objName, " -> ", UseTrendDetection);
 
-         if (UseTrendDetection) // ✅ Si la détection de tendance est activée
+         if (DisplayOnChart) // ✅ Si la détection de tendance est activée
          {
             ObjectSetInteger(0, objName, OBJPROP_COLOR, clrWhite); // ✅ Afficher l'indicateur
          }
@@ -265,16 +265,16 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   static int currentTrendMethod = -1;  // ou toute autre valeur
+   static int localcurrentTrendMethod = -1;  // ou toute autre valeur
 
    // ✅ Gérer la visibilité des indicateurs en fonction de UseTrendDetection
    SetIndicatorVisibility();
 
    // ✅ Vérifier si l'indicateur sélectionné a changé et doit être mis à jour
-   if (TrendMethodChoice != currentTrendMethod)
+   if (TrendMethodChoice != localcurrentTrendMethod)
    {
       RemoveAllIndicators(); // Supprimer les anciens indicateurs uniquement si on change
-      currentTrendMethod = TrendMethodChoice; // Mettre à jour l'indicateur affiché
+      localcurrentTrendMethod = TrendMethodChoice; // Mettre à jour l'indicateur affiché
       isIndicatorLoaded = false; // Indicateur doit être rechargé
    }
 
