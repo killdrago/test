@@ -68,13 +68,15 @@ input bool    UseMaxSpreadFilter      = true;            // Utiliser le filtre d
 input long    MaxSpreadPoints         = 20;              // Spread maximum autorisé en points
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
 
-input string trend_settings           = "=== Méthode de détermination de la tendance ===";
-input bool DisplayOnChart             = true; // Afficher les indicateurs sur le graphique
-input bool UseTrendDetection          = true; // activer ou désactiver la détection de tendance
+input string trend_settings = "=== Méthode de détermination de la tendance ===";
+input bool DisplayOnChart = true; // Afficher les indicateurs sur le graphique
+input bool UseTrendDetection = true; // activer ou désactiver la détection de tendance
 enum TrendMethod {Ichimoku, MA};
-input TrendMethod TrendMethodChoice   = Ichimoku; // Choix de la méthode de tendance
-input ENUM_TIMEFRAMES TrendTimeframe  = PERIOD_D1; // Unité de temps pour la tendance
-input int TrendMA_Period              = 200; // Période de la MM pour la tendance
+input TrendMethod TrendMethodChoice = Ichimoku; // Choix de la méthode de tendance
+input ENUM_TIMEFRAMES TrendTimeframe = PERIOD_D1; // Unité de temps pour la tendance
+input int TrendMA_Period = 200; // Période de la MM pour la tendance
+input color TendanceH = clrBlue; // Couleur haussiere
+input color TendanceB = clrRed; // Couleur baissier
 
 input string  strategy_settings       = "=== Stratégie de trading ===";
 enum StrategyType {MA_Crossover, RSI_OSOB, FVG_Strategy};
@@ -265,6 +267,12 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+    // Détection de tendance et mise à jour des couleurs
+    if (UseTrendDetection)
+    {
+        DetectTrendAndSetColor();
+    }   
+   
    static int localcurrentTrendMethod = -1;  // ou toute autre valeur
 
    // ✅ Gérer la visibilité des indicateurs en fonction de UseTrendDetection
@@ -2679,6 +2687,64 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
    }
    return false;
 }
+
+//+------------------------------------------------------------------+
+// Détection de la tendance et changement de couleur                 |
+//+------------------------------------------------------------------+
+void DetectTrendAndSetColor()
+{
+    // Variables pour stocker la tendance et la couleur correspondante
+    bool isBullish = false; // Variable pour la tendance haussière
+    color trendColor;
+
+    // Vérification de la méthode de détection choisie
+    if (TrendMethodChoice == Ichimoku)
+    {
+        // Calcul des lignes Ichimoku sur l'unité de temps choisie
+        double tenkan_sen = iIchimoku(NULL, TrendTimeframe, 9, 26, 52, MODE_TENKANSEN, 0);
+        double kijun_sen = iIchimoku(NULL, TrendTimeframe, 9, 26, 52, MODE_KIJUNSEN, 0);
+
+        // Détection de tendance Ichimoku (Tenkan > Kijun : haussier, sinon baissier)
+        isBullish = (tenkan_sen > kijun_sen);
+    }
+    else if (TrendMethodChoice == MA)
+    {
+        // Calcul de la Moyenne Mobile sur l'unité de temps choisie
+        double ma_value = iMA(NULL, TrendTimeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE, 0);
+
+        // Détection de tendance MA (prix actuel > MA : haussier, sinon baissier)
+        isBullish = (Close[0] > ma_value);
+    }
+
+    // Définir la couleur en fonction de la tendance
+    trendColor = isBullish ? TendanceH : TendanceB;
+
+    // Affichage sur le graphique si activé
+    if (DisplayOnChart)
+    {
+        // Exemple : Dessiner une ligne horizontale pour symboliser la tendance
+        DrawTrendLine(trendColor);
+    }
+}
+
+//+------------------------------------------------------------------+
+// Fonction pour dessiner une ligne sur le graphique                 |
+//+------------------------------------------------------------------+
+void DrawTrendLine(color trendColor)
+{
+    static int trend_line_id = 0; // Identifiant unique pour la ligne de tendance
+    string line_name = "TrendLine_" + IntegerToString(trend_line_id);
+
+    // Supprimer l'ancienne ligne si elle existe
+    ObjectDelete(0, line_name);
+
+    // Ajouter une nouvelle ligne horizontale avec la couleur correspondant à la tendance
+    ObjectCreate(0, line_name, OBJ_HLINE, 0, TimeCurrent(), 0);
+    ObjectSetInteger(0, line_name, OBJPROP_COLOR, trendColor);
+    ObjectSetInteger(0, line_name, OBJPROP_WIDTH, 2); // Épaisseur de la ligne
+    ObjectSetDouble(0, line_name, OBJPROP_PRICE, Close[0]); // Position de la ligne
+}
+
 //+------------------------------------------------------------------+
 //| Fin du code                                                      |
 //+------------------------------------------------------------------+ 
