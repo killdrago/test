@@ -185,11 +185,16 @@ void SetIndicatorVisibility()
 
       if (StringFind(objName, "Ichimoku_") >= 0 || StringFind(objName, "MA_") >= 0)
       {
-         Print("Modification de la visibilité de : ", objName, " -> ", UseTrendDetection);
-
          if (DisplayOnChart) // ✅ Si la détection de tendance est activée
          {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrWhite); // ✅ Afficher l'indicateur
+            if (TrendMethodChoice == Ichimoku)
+            {
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, ichimokucouleur()); // Afficher l'indicateur
+            }
+            else
+            {
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, MAtendancecouleur()); // Afficher l'indicateur
+            }
          }
          else // ✅ Sinon, masquer l'indicateur
          {
@@ -1389,6 +1394,19 @@ void ManageGridTrading(CPositionInfo &pos, double &gridDistancePercentage, doubl
 }
 
 //+------------------------------------------------------------------+
+//| Fonction pour les couleurs ichimoku en fonction de la tendance   |
+//+------------------------------------------------------------------+
+color ichimokucouleur()
+{
+    // ... Votre logique Ichimoku pour déterminer la couleur ...
+    color cloudColor;
+
+   cloudColor = clrYellow;
+   
+
+    return (cloudColor); // Retourner la couleur calculée
+}
+//+------------------------------------------------------------------+
 //| Fonction pour afficher le nuage Ichimoku sur le graphique         |
 //+------------------------------------------------------------------+
 void DisplayIchimokuOnChart()
@@ -1425,6 +1443,20 @@ void DisplayIchimokuOnChart()
          ObjectSetInteger(0, objName, OBJPROP_HIDDEN, !DisplayOnChart); // ✅ Masquer/Afficher selon DisplayOnChart
       }
    }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour les couleurs ichimoku en fonction de la tendance   |
+//+------------------------------------------------------------------+
+color MAtendancecouleur()
+{
+    // ... Votre logique de moyenne mobile pour déterminer la couleur ...
+    color maCouleur;
+
+        maCouleur = clrGreen;
+
+
+    return (maCouleur); // Retourner la couleur calculée
 }
 
 //+------------------------------------------------------------------+
