@@ -54,7 +54,7 @@ input string  display_settings        = "=== Paramètres d'affichage ===";
 input bool    DisplayTable            = true; // Afficher le tableau d'informations
 input int     TextPosition            = 4;               // 1=Haut gauche, 2=Haut Droite, 3=Bas Gauche, 4=Bas Droite
 input color   TextColor               = clrBlack;        // Couleur de tous les textes
-input color   TableFondColor        = clrYellow;       // Couleur de fond du tableau
+input color   TableFondColor          = clrYellow;       // Couleur de fond du tableau
 
 input string  martingale_settings     = "=== Paramètres des lots et martingale ===";
 enum LotType {LotFixe, Martingale};
@@ -68,12 +68,15 @@ input bool    UseMaxSpreadFilter      = true;            // Utiliser le filtre d
 input long    MaxSpreadPoints         = 20;              // Spread maximum autorisé en points
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
 
-input string  trend_settings          = "=== Méthode de détermination de la tendance ===";
+input string trend_settings           = "=== Méthode de détermination de la tendance ===";
+input bool DisplayOnChart             = true; // Afficher les indicateurs sur le graphique
+input bool UseTrendDetection          = true; // activer ou désactiver la détection de tendance
 enum TrendMethod {Ichimoku, MA};
-input TrendMethod TrendMethodChoice   = Ichimoku;  // Choix de la méthode de tendance
-input ENUM_TIMEFRAMES TrendTimeframe  = PERIOD_D1;       // Unité de temps pour la tendance
-input int     TrendMA_Period          = 200;             // Période de la MM pour la tendance
-input bool    DisplayOnChart          = true;            // Afficher les indicateurs sur le graphique
+input TrendMethod TrendMethodChoice   = Ichimoku; // Choix de la méthode de tendance
+input ENUM_TIMEFRAMES TrendTimeframe  = PERIOD_D1; // Unité de temps pour la tendance
+input int TrendMA_Period              = 200; // Période de la MM pour la tendance
+input color TendanceH                   = clrBlue;
+input color TendanceB                   = clrYellow;
 
 input string  strategy_settings       = "=== Stratégie de trading ===";
 enum StrategyType {MA_Crossover, RSI_OSOB, FVG_Strategy};
@@ -146,6 +149,13 @@ double adjusted_InpSLsuiveur = 0.0;
 const int Ichimoku_Tenkan = 9;   // Période Tenkan-sen pour la tendance (fixe)
 const int Ichimoku_Kijun  = 26;  // Période Kijun-sen pour la tendance (fixe)
 const int Ichimoku_Senkou = 52;  // Période Senkou Span B pour la tendance (fixe)
+//--- Buffers pour stocker les valeurs de Senkou Span A et B
+double ExtSpanABuffer[];
+double ExtSpanBBuffer[];
+//--- Couleurs du nuage
+#property indicator_color1  SandyBrown, Thistle
+#property indicator_label1  "Senkou Span A; Senkou Span B"
+
 
 //--- Variables globales pour la martingale
 int MartingaleAttempts[]; // Tableau pour suivre les tentatives de martingale par symbole
@@ -156,22 +166,82 @@ string        ActiveSymbols[];          // Tableau des symboles actifs
 bool          isNewMinute       = false;
 datetime      lastMinuteChecked = 0;
 ulong         current_ticket    = 0;    // Pour suivre le ticket de la position courante
+color  previousTrendColor = clrNONE; // Initialiser à "aucune couleur" au démarrage
 
 //--- Variables pour les handles des indicateurs
 int           MA_Handle1[];    // Handles pour les moyennes mobiles
 int           MA_Handle2[];
-int           MACD_Handle[];   // Handles pour le MACD
 int           Ichimoku_Handle[]; // Handles pour l'Ichimoku
 
 //--- Enumérations personnalisées
 enum MarketTrend { TrendHaussiere, TrendBaissiere, Indecis };
 enum CrossSignal { Achat, Vente, Aucun };
 
+//--- Stockage indicateur de tendance
+int currentTrendMethod = -1; // Stocke l'indicateur actuellement affiché (-1 = aucun au départ)
+bool isIndicatorLoaded = false; // Indique si l'indicateur est déjà chargé
+
+//+------------------------------------------------------------------+
+//| Fonction pour cacher les indicateurs tendance                    |
+//+------------------------------------------------------------------+
+void SetIndicatorVisibility()
+{
+   int totalObjects = ObjectsTotal(0, 0, -1);
+   Print("Nombre total d'objets trouvés : ", totalObjects);
+
+   for (int i = 0; i < totalObjects; i++)
+   {
+      string objName = ObjectName(0, i);
+
+      if (StringFind(objName, "Ichimoku_") >= 0 || StringFind(objName, "MA_") >= 0)
+      {
+         if (DisplayOnChart) // ✅ Si la détection de tendance est activée
+         {
+            if (TrendMethodChoice == Ichimoku)
+            {
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, ichimokucouleur()); // Afficher l'indicateur
+            }
+            else
+            {
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, MAtendancecouleur()); // Afficher l'indicateur
+            }
+         }
+         else // ✅ Sinon, masquer l'indicateur
+         {
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrNONE); // ✅ Rendre invisible
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction de suppression indicateur tendance                      |
+//+------------------------------------------------------------------+
+void RemoveAllIndicators()
+{
+   ObjectsDeleteAll(0, 0); // Supprime tous les objets du graphique
+   isIndicatorLoaded = false;
+}
+
 //+------------------------------------------------------------------+
 //| Fonction d'initialisation de l'expert                            |
 //+------------------------------------------------------------------+
 int OnInit()
 {
+      //--- Associer les buffers aux indices
+   SetIndexBuffer(0, ExtSpanABuffer, INDICATOR_DATA);
+   SetIndexBuffer(1, ExtSpanBBuffer, INDICATOR_DATA);
+
+   //--- Définir la précision des valeurs affichées
+   IndicatorSetInteger(INDICATOR_DIGITS, _Digits + 1);
+
+   //--- Définir le décalage du nuage dans le futur
+   PlotIndexSetInteger(0, PLOT_DRAW_BEGIN, Ichimoku_Senkou - 1);
+   PlotIndexSetInteger(0, PLOT_SHIFT, Ichimoku_Kijun);
+
+   //--- Modifier les labels affichés dans la Data Window (Correction ici)
+   PlotIndexSetString(0, PLOT_LABEL, StringFormat("Senkou Span A; Senkou Span B (%d)", Ichimoku_Senkou));
+   
     // Initialisation des handles pour Ichimoku
     int ichimokuHandle = iIchimoku(Symbol(), TrendTimeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
     if (ichimokuHandle == INVALID_HANDLE)
@@ -224,9 +294,21 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   static int localcurrentTrendMethod = -1;  // ou toute autre valeur
 
-      // Afficher les indicateurs sur le graphique si demandé
-   if (DisplayOnChart)
+   // ✅ Gérer la visibilité des indicateurs en fonction de UseTrendDetection
+   SetIndicatorVisibility();
+
+   // ✅ Vérifier si l'indicateur sélectionné a changé et doit être mis à jour
+   if (TrendMethodChoice != localcurrentTrendMethod)
+   {
+      RemoveAllIndicators(); // Supprimer les anciens indicateurs uniquement si on change
+      localcurrentTrendMethod = TrendMethodChoice; // Mettre à jour l'indicateur affiché
+      isIndicatorLoaded = false; // Indicateur doit être rechargé
+   }
+
+   // ✅ Charger l'indicateur uniquement si ce n'est pas déjà fait
+   if (DisplayOnChart && !isIndicatorLoaded)
    {
       if (TrendMethodChoice == Ichimoku)
       {
@@ -236,21 +318,23 @@ void OnTick()
       {
          DisplayMAOnChart();
       }
+      isIndicatorLoaded = true; // Indique que l'indicateur est chargé
    }
-   // Mettre à jour l'affichage (tableau d'informations, lignes horizontales, etc.)
+
+   // ✅ Toujours afficher le tableau si activé, indépendamment de UseTrendDetection
    if (DisplayTable)
    {
       DrawDisplayFrame();
    }
-   
-   // Vérifier les conditions de marché
+
+   // ✅ Vérifier si les conditions de marché sont favorables
    if (!IsMarketConditionsSuitable())
    {
       Print("Conditions de marché non favorables.");
       return;
    }
 
-   // Vérifier si nous sommes sur une nouvelle minute
+   // ✅ Vérifier si nous sommes sur une nouvelle minute
    datetime currentTime = TimeCurrent();
    if (currentTime > lastMinuteChecked + 60)
    {
@@ -262,27 +346,24 @@ void OnTick()
       isNewMinute = false;
    }
 
-   // Mettre à jour les positions existantes (gestion des stops, etc.)
+   // ✅ Mettre à jour les positions existantes (gestion des stops, etc.)
    UpdateExistingPositions();
 
-   // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
+   // ✅ Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
    if (!isNewMinute)
    {
-      return; // Ne pas afficher de message, simplement sortir de la fonction
+      return;
    }
 
-   // Vérifier les actualités importantes
+   // ✅ Vérifier les actualités importantes
    if (UseNewsFilter && IsThereNews(Symbol()))
    {
       Print("Actualités importantes détectées, trading évité.");
       return;
    }
-   
-   // Vérifier les signaux et ouvrir des positions si nécessaire
+
+   // ✅ Vérifier les signaux et ouvrir des positions si nécessaire
    CheckForNewSignals();
-   
-    
-   
 }
 
 //+------------------------------------------------------------------+
@@ -594,8 +675,20 @@ void CheckForNewSignals()
       return;
    }
 
-   // Obtenir la tendance
-   MarketTrend trend = GetMarketTrend(Symbol(), 0);
+   // Variable pour stocker la tendance
+   MarketTrend trend = Indecis; // Assurez-vous que cette valeur par défaut est correcte
+
+   // Vérifier si la détection de tendance est activée
+   if (UseTrendDetection)
+   {
+      // Obtenir la tendance
+      trend = GetMarketTrend(Symbol(), 0);
+      Print("Tendance détectée : ", EnumToString(trend));
+   }
+   else
+   {
+      Print("Détection de tendance désactivée.");
+   }
 
    // Vérifier le signal selon la stratégie choisie
    CrossSignal signal = CheckStrategySignal(Symbol(), 0);
@@ -612,31 +705,34 @@ void CheckForNewSignals()
          return;
       }
 
-      // Ouvrir la position en fonction du type de Stop Loss
-      if (StopLossType == SL_Classique)
+      // Vérifier la tendance avant de prendre des décisions d'achat ou de vente
+      if (signal == Achat && trend != TrendBaissiere)
       {
-         if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+         // Ouvrir la position avec Stop Loss Classique
+         if (StopLossType == SL_Classique)
          {
-            Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+            {
+               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+            }
          }
+         // Ajoutez d'autres types de Stop Loss ici si nécessaire
       }
-      else if (StopLossType == SL_Suiveur)
+      else if (signal == Vente && trend != TrendHaussiere)
       {
-         if (OpenPositionWithTrailingSL(Symbol(), signal, volume))
+         // Ouvrir la position avec Stop Loss Classique
+         if (StopLossType == SL_Classique)
          {
-            Print("Position ouverte avec Stop Loss Suiveur pour ", Symbol());
+            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+            {
+               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+            }
          }
-      }
-      else if (StopLossType == GridTrading)
-      {
-         if (OpenPositionWithGridTrading(Symbol(), signal, volume))
-         {
-            Print("Position ouverte avec Grid Trading pour ", Symbol());
-         }
+         // Ajoutez d'autres types de Stop Loss ici si nécessaire
       }
       else
       {
-         Print("Type de Stop Loss non reconnu.");
+         Print("Signal non pris en compte en raison de la tendance du marché.");
       }
    }
 
@@ -1322,43 +1418,93 @@ void ManageGridTrading(CPositionInfo &pos, double &gridDistancePercentage, doubl
 }
 
 //+------------------------------------------------------------------+
+//| Fonction pour les couleurs ichimoku en fonction de la tendance   |
+//+------------------------------------------------------------------+
+color ichimokucouleur()
+{
+    // ... Votre logique Ichimoku pour déterminer la couleur ...
+    color cloudColor;
+
+   cloudColor = clrYellow;
+   
+
+    return (cloudColor); // Retourner la couleur calculée
+}
+//+------------------------------------------------------------------+
 //| Fonction pour afficher le nuage Ichimoku sur le graphique         |
 //+------------------------------------------------------------------+
 void DisplayIchimokuOnChart()
 {
-   string symbol = Symbol();
-   ENUM_TIMEFRAMES timeframe = TrendTimeframe;
 
-   // Supprimer les objets existants pour éviter les doublons
-   ObjectsDeleteAll(0, "Ichimoku*");
+}
 
-   // Obtenir les buffers Ichimoku (uniquement Senkou Span A et B)
-   double senkouSpanA[], senkouSpanB[];
+//+------------------------------------------------------------------+
+//| Fonction pour récupérer le prix maximum sur une période donnée  |
+//+------------------------------------------------------------------+
+double Highest(const double &array[], const int range, int from_index)
+{
+   double res = array[from_index];
+   for (int i = from_index; i > from_index - range && i >= 0; i--)
+      if (res < array[i])
+         res = array[i];
 
-   ArraySetAsSeries(senkouSpanA, true);
-   ArraySetAsSeries(senkouSpanB, true);
+   return (res);
+}
 
-   int ichimokuHandle = iIchimoku(symbol, timeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
+//+------------------------------------------------------------------+
+//| Fonction pour récupérer le prix minimum sur une période donnée  |
+//+------------------------------------------------------------------+
+double Lowest(const double &array[], const int range, int from_index)
+{
+   double res = array[from_index];
+   for (int i = from_index; i > from_index - range && i >= 0; i--)
+      if (res > array[i])
+         res = array[i];
 
-   if (CopyBuffer(ichimokuHandle, 2, 0, 100, senkouSpanA) <= 0 ||
-       CopyBuffer(ichimokuHandle, 3, 0, 100, senkouSpanB) <= 0)
-   {
-       Print("Erreur lors de la copie des données Ichimoku pour l'affichage sur le graphique");
-      return;
-   }
+   return (res);
+}
 
-   // Afficher le nuage Ichimoku (Senkou Span A et B)
-   for (int i = 0; i < ArraySize(senkouSpanA) - 1; i++)
-   {
-      if (senkouSpanA[i] != EMPTY_VALUE && senkouSpanA[i + 1] != EMPTY_VALUE &&
-          senkouSpanB[i] != EMPTY_VALUE && senkouSpanB[i + 1] != EMPTY_VALUE)
-      {
-         ObjectCreate(0, "Ichimoku_Cloud_" + (string)i, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i), MathMin(senkouSpanA[i], senkouSpanB[i]), iTime(symbol, timeframe, i + 1), MathMax(senkouSpanA[i + 1], senkouSpanB[i + 1]));
-         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_COLOR, (senkouSpanA[i] > senkouSpanB[i]) ? clrLimeGreen : clrRed);
-         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_FILL, true);
-         ObjectSetInteger(0, "Ichimoku_Cloud_" + (string)i, OBJPROP_BACK, true);
-      }
-   }
+
+//+------------------------------------------------------------------+
+//| Fonction pour déterminer la couleur de la MA en fonction de la |
+//| tendance                                                        |
+//+------------------------------------------------------------------+
+color MAtendancecouleur()
+{
+    // 1. Calculer la valeur de la MA sur l'UT spécifiée
+    double maCurrent  = iMA(NULL, TrendTimeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE);
+    double maPrevious = iMA(NULL, TrendTimeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE);
+
+    // 2. Déterminer la tendance actuelle
+    color trendColor;
+
+    if (maCurrent > maPrevious)
+    {
+        trendColor = TendanceH; // Tendance haussière
+    }
+    else if (maCurrent < maPrevious)
+    {
+         trendColor = TendanceB; // Tendance baissière
+    }
+    else
+    {
+        // MA plate (horizontale) - utiliser la tendance précédente
+        if (previousTrendColor == clrNONE)
+        {
+            // Si pas de tendance précédente, utiliser la couleur haussière par défaut
+            trendColor = TendanceH;
+        }
+        else
+        {
+            trendColor = previousTrendColor;
+        }
+    }
+
+    // 3. Mémoriser la tendance actuelle pour la prochaine itération
+    previousTrendColor = trendColor;
+
+    // 4. Retourner la couleur
+    return (trendColor);
 }
 
 //+------------------------------------------------------------------+
@@ -1366,36 +1512,60 @@ void DisplayIchimokuOnChart()
 //+------------------------------------------------------------------+
 void DisplayMAOnChart()
 {
-   string symbol = Symbol();
-   ENUM_TIMEFRAMES timeframe = TrendTimeframe;
+    if (!DisplayOnChart) return; // Ne rien faire si l'affichage est désactivé
 
-   // Supprimer les objets existants pour éviter les doublons
-   ObjectsDeleteAll(0, "MA*");
+    string symbol = Symbol();
+    ENUM_TIMEFRAMES timeframe = TrendTimeframe;
 
-   // Obtenir les buffers de la Moyenne Mobile de tendance
-   double maTrend[];
+    // --- Obtenir le nombre total de barres dans l'historique
+    int totalBars = Bars(symbol, timeframe);
 
-   ArraySetAsSeries(maTrend, true);
+    // --- Obtenir les données de la MA
+    double maTrend[];
+    ArraySetAsSeries(maTrend, true);
+    int maTrendHandle = iMA(symbol, timeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE);
 
-   int maTrendHandle = iMA(symbol, timeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE);
+    if (CopyBuffer(maTrendHandle, 0, 0, totalBars, maTrend) <= 0)
+    {
+        Print("Erreur lors de la copie des données MA.");
+        return;
+    }
 
-   if (CopyBuffer(maTrendHandle, 0, 0, 100, maTrend) <= 0)
-   {
-      Print("Erreur lors de la copie des données MA pour l'affichage sur le graphique");
-      return;
-   }
+    // --- Créer/Mettre à jour les objets OBJ_TREND
+    for (int i = 0; i < totalBars - 1; i++)
+    {
+        string objName = "MA_Trend_" + IntegerToString(i); // Déclaration de objName ici
 
-   // Afficher la Moyenne Mobile de tendance
-   for (int i = 0; i < ArraySize(maTrend) - 1; i++)
-   {
-      if (maTrend[i] != EMPTY_VALUE && maTrend[i + 1] != EMPTY_VALUE)
-      {
-         ObjectCreate(0, "MA_Trend_" + (string)i, OBJ_TREND, 0, iTime(symbol, timeframe, i), maTrend[i], iTime(symbol, timeframe, i + 1), maTrend[i + 1]);
-         ObjectSetInteger(0, "MA_Trend_" + (string)i, OBJPROP_COLOR, clrBlue);
-         ObjectSetInteger(0, "MA_Trend_" + (string)i, OBJPROP_WIDTH, 2);
-         ObjectSetInteger(0, "MA_Trend_" + (string)i, OBJPROP_STYLE, STYLE_SOLID);
-      }
-   }
+        if (maTrend[i] != EMPTY_VALUE)
+        {
+            // --- Création de l'objet si inexistant
+            if (ObjectFind(0, objName) < 0)
+            {
+                if(ObjectCreate(0, objName, OBJ_TREND, 0, iTime(symbol, timeframe, i), maTrend[i], iTime(symbol, timeframe, i + 1), maTrend[i + 1]))
+                {
+                    Print("Création de l'objet MA : ", objName);
+                }
+                else
+                {
+                    Print("Échec de la création de l'objet MA : ", objName, " Error : ", GetLastError());
+                }
+            }
+            else
+            {
+               // Déplacement de l'objet s'il existe
+               ObjectMove(0, objName, 0, iTime(symbol, timeframe, i), maTrend[i]);
+               ObjectMove(0, objName, 1, iTime(symbol, timeframe, i + 1), maTrend[i + 1]);
+            }
+
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, MAtendancecouleur()); // Affectation de la couleur
+            ObjectSetInteger(0, objName, OBJPROP_HIDDEN, !DisplayOnChart); // Masquer/Afficher selon DisplayOnChart
+         }
+         else
+         {
+            // Suppression de l'objet si la valeur est vide
+            ObjectDelete(0, objName);
+         }
+    }
 }
 
 //+------------------------------------------------------------------+
@@ -2593,12 +2763,13 @@ bool OpenPositionWithTrailingSL(string symbol, CrossSignal signal, double volume
 //+------------------------------------------------------------------+
 bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
 {
-   if (IsPositionOpen(symbol))
+   if (PositionSelect(_Symbol) == true)
    {
       Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
       return false;
    }
-
+   else
+   {
    double sl = 0.0, tp = 0.0;
    double slPercentage = 0.0, tpPercentage = 0.0, slPoints = 0.0, tpPoints = 0.0;
 
@@ -2608,6 +2779,7 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
    {
       Print("Position ouverte avec Stop Loss Classique pour ", symbol);
       return true;
+   }
    }
    return false;
 }
