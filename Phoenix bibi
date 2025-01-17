@@ -69,7 +69,7 @@ input long    MaxSpreadPoints         = 20;              // Spread maximum autor
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
 
 input string trend_settings           = "=== Méthode de détermination de la tendance ===";
-input bool DisplayOnChart             = true; // Afficher les indicateurs sur le graphique
+input bool DisplayOnChart             = true; // Afficher les indicateurs de tendance sur le graphique
 input bool UseTrendDetection          = true; // activer ou désactiver la détection de tendance
 enum TrendMethod {Ichimoku, MA};
 input TrendMethod TrendMethodChoice   = Ichimoku; // Choix de la méthode de tendance
