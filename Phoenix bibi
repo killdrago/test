@@ -64,7 +64,7 @@ input double  MartingaleStartLot      = 0.01;           // Lot de départ pour l
 input double  MartingaleMultiplier    = 2.0;            // Multiplicateur de la martingale
 
 input string  spreadslippage          = "=== Spread et slippage ===";
-input bool    UseMaxSpreadFilter      = true;            // Utiliser le filtre de spread maximum
+input bool    UseMaxSpreadFilter      = false;            // Utiliser le filtre de spread maximum
 input long    MaxSpreadPoints         = 20;              // Spread maximum autorisé en points
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
 
@@ -145,11 +145,6 @@ double adjusted_InpRespiration = 0.0;
 double adjusted_InpRespirationSL = 0.0;
 double adjusted_InpSLsuiveur = 0.0;
 
-//--- Constantes pour Ichimoku (tendance)
-const int Ichimoku_Tenkan = 9;   // Période Tenkan-sen pour la tendance (fixe)
-const int Ichimoku_Kijun  = 26;  // Période Kijun-sen pour la tendance (fixe)
-const int Ichimoku_Senkou = 52;  // Période Senkou Span B pour la tendance (fixe)
-
 //--- Variables globales pour la martingale
 int MartingaleAttempts[]; // Tableau pour suivre les tentatives de martingale par symbole
 
@@ -159,7 +154,6 @@ string        ActiveSymbols[];          // Tableau des symboles actifs
 bool          isNewMinute       = false;
 datetime      lastMinuteChecked = 0;
 ulong         current_ticket    = 0;    // Pour suivre le ticket de la position courante
-color  previousTrendColor = clrNONE; // Initialiser à "aucune couleur" au démarrage
 
 //--- Variables pour les handles des indicateurs
 int           MA_Handle1[];    // Handles pour les moyennes mobiles
@@ -180,7 +174,6 @@ bool isIndicatorLoaded = false; // Indique si l'indicateur est déjà chargé
 void SetIndicatorVisibility()
 {
    int totalObjects = ObjectsTotal(0, 0, -1);
-   Print("Nombre total d'objets trouvés : ", totalObjects);
 
    for (int i = 0; i < totalObjects; i++)
    {
@@ -188,20 +181,14 @@ void SetIndicatorVisibility()
 
       if (StringFind(objName, "Ichimoku_") >= 0 || StringFind(objName, "MA_") >= 0)
       {
-         if (DisplayOnChart) // ✅ Si la détection de tendance est activée
+         if (DisplayOnChart)
          {
-            if (TrendMethodChoice == Ichimoku)
-            {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, ichimokucouleur()); // Afficher l'indicateur
-            }
-            else
-            {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, MAtendancecouleur()); // Afficher l'indicateur
-            }
+            // Ne RIEN faire ici concernant la couleur pour les MA_ et Ichimoku_.
+            // Laissez DisplayMAOnChart() et DisplayIchimokuOnChart() gérer la couleur.
          }
-         else // ✅ Sinon, masquer l'indicateur
+         else
          {
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrNONE); // ✅ Rendre invisible
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, clrNONE); // ✅ Rendre invisible si DisplayOnChart est faux
          }
       }
    }
@@ -231,7 +218,7 @@ int OnInit()
     
     ArrayResize(Ichimoku_Handle, 1);
     Ichimoku_Handle[0] = ichimokuHandle;
-
+    
     // Initialisation des handles pour les moyennes mobiles
     ArrayResize(MA_Handle1, 1);
     ArrayResize(MA_Handle2, 1);
@@ -638,8 +625,6 @@ void ReleaseIndicatorHandles()
 //+------------------------------------------------------------------+
 void CheckForNewSignals()
 {
-   Print("Début de CheckForNewSignals");
-
    // Vérifier les conditions de trading
    if (!IsMarketConditionsSuitable())
    {
@@ -715,7 +700,6 @@ void CheckForNewSignals()
       }
    }
 
-   Print("Fin de CheckForNewSignals");
 }
 
 //+------------------------------------------------------------------+
@@ -1397,101 +1381,87 @@ void ManageGridTrading(CPositionInfo &pos, double &gridDistancePercentage, doubl
 }
 
 //+------------------------------------------------------------------+
-//| Fonction pour les couleurs ichimoku en fonction de la tendance   |
+//| Fonction pour afficher l'Ichimoku sur le graphique             |
 //+------------------------------------------------------------------+
-color ichimokucouleur()
-{
-    // ... Votre logique Ichimoku pour déterminer la couleur ...
-    color cloudColor;
+//--- Constantes pour Ichimoku (tendance)
+const int Ichimoku_Tenkan = 9;   // Période Tenkan-sen pour la tendance (fixe)
+const int Ichimoku_Kijun  = 26;  // Période Kijun-sen pour la tendance (fixe)
+const int Ichimoku_Senkou = 52;  // Période Senkou Span B pour la tendance (fixe)
+color  previousTrendColor = clrNONE; // Initialiser à "aucune couleur" au démarrage
 
-   cloudColor = clrYellow;
-   
-
-    return (cloudColor); // Retourner la couleur calculée
-}
-//+------------------------------------------------------------------+
-//| Fonction pour afficher le nuage Ichimoku sur le graphique         |
-//+------------------------------------------------------------------+
 void DisplayIchimokuOnChart()
 {
-if (!DisplayOnChart) return; // Ne rien faire si l'affichage est désactivé
+   if (!DisplayOnChart) return; // Ne rien faire si l'affichage est désactivé
 
-string symbol = Symbol();
-ENUM_TIMEFRAMES timeframe = TrendTimeframe;
+   string symbol = Symbol();
+   ENUM_TIMEFRAMES timeframe = TrendTimeframe;
 
-double senkouSpanA[], senkouSpanB[];
-ArraySetAsSeries(senkouSpanA, true);
-ArraySetAsSeries(senkouSpanB, true);
+   int totalBars = Bars(symbol, timeframe);
 
-int ichimokuHandle = iIchimoku(symbol, timeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
-if (CopyBuffer(ichimokuHandle, 2, 0, 100, senkouSpanA) <= 0 ||
-CopyBuffer(ichimokuHandle, 3, 0, 100, senkouSpanB) <= 0)
-{
-Print("Erreur lors de la copie des données Ichimoku.");
-return;
+   double ichimokuTenkan[];
+   double ichimokuKijun[];
+   double ichimokuSenkouSpanA[];
+   double ichimokuSenkouSpanB[];
+
+   ArraySetAsSeries(ichimokuTenkan, true);
+   ArraySetAsSeries(ichimokuKijun, true);
+   ArraySetAsSeries(ichimokuSenkouSpanA, true);
+   ArraySetAsSeries(ichimokuSenkouSpanB, true);
+
+   int ichimokuHandle = iIchimoku(symbol, timeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
+   if(ichimokuHandle == INVALID_HANDLE)
+   {
+      Print("Erreur lors de la création du handle Ichimoku : ", GetLastError());
+      return;
+   }
+
+   CopyBuffer(ichimokuHandle, 0, 0, totalBars, ichimokuTenkan);
+   CopyBuffer(ichimokuHandle, 1, 0, totalBars, ichimokuKijun);
+   CopyBuffer(ichimokuHandle, 2, 0, totalBars, ichimokuSenkouSpanA);
+   CopyBuffer(ichimokuHandle, 3, 0, totalBars, ichimokuSenkouSpanB);
+
+   // Supprimer les anciens objets Tenkan et Kijun avant de redessiner
+   ObjectsDeleteAll(0, "Tenkan_");
+   ObjectsDeleteAll(0, "Kijun_");
+
+   // Boucle pour dessiner les lignes et le nuage
+   for(int i = 0; i < totalBars - 1; i++) // Aller jusqu'à totalBars - 1 pour avoir un point suivant
+   {
+      // Tenkan-sen (segments de ligne)
+      string tenkanName = "Tenkan_" + IntegerToString(i);
+      ObjectCreate(0, tenkanName, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuTenkan[i], iTime(symbol, timeframe, i+1), ichimokuTenkan[i+1]);
+      ObjectSetInteger(0, tenkanName, OBJPROP_COLOR, previousTrendColor); // Utilisation de la variable existante pour Tenkan
+      ObjectSetInteger(0, tenkanName, OBJPROP_STYLE, STYLE_SOLID); // Style de ligne continue
+      ObjectSetInteger(0, tenkanName, OBJPROP_WIDTH, 1);       // Épaisseur de la ligne
+
+      // Kijun-sen (segments de ligne)
+      string kijunName = "Kijun_" + IntegerToString(i);
+      ObjectCreate(0, kijunName, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuKijun[i], iTime(symbol, timeframe, i+1), ichimokuKijun[i+1]);
+      ObjectSetInteger(0, kijunName, OBJPROP_COLOR, previousTrendColor); // Utilisation de la variable existante pour Kijun
+      ObjectSetInteger(0, kijunName, OBJPROP_STYLE, STYLE_SOLID); // Style de ligne continue
+      ObjectSetInteger(0, kijunName, OBJPROP_WIDTH, 1);       // Épaisseur de la ligne
+
+      // Senkou Span A et B (Nuage) - Dessiné 26 périodes en avance
+      if(i >= Ichimoku_Kijun) { // Vérifier si suffisamment de données pour le nuage
+         string nuageName = "Nuage_" + IntegerToString(i);
+         color nuageColor;
+         if (ichimokuSenkouSpanA[i - Ichimoku_Kijun] > ichimokuSenkouSpanB[i - Ichimoku_Kijun]) {
+             nuageColor = TendanceH; // Senkou A au-dessus de Senkou B
+         } else {
+             nuageColor = TendanceB; // Senkou A en-dessous de Senkou B
+         }
+
+         if(ObjectFind(0, nuageName) == -1)
+            ObjectCreate(0, nuageName, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i-Ichimoku_Kijun), ichimokuSenkouSpanA[i-Ichimoku_Kijun], iTime(symbol, timeframe, i - Ichimoku_Kijun + 1), ichimokuSenkouSpanB[i-Ichimoku_Kijun]);
+
+         ObjectSetInteger(0, nuageName, OBJPROP_COLOR,  nuageColor);
+         ObjectSetInteger(0, nuageName, OBJPROP_BACK, true);
+         ObjectMove(0, nuageName, 0, iTime(symbol, timeframe, i-Ichimoku_Kijun), MathMin(ichimokuSenkouSpanA[i-Ichimoku_Kijun], ichimokuSenkouSpanB[i-Ichimoku_Kijun]));
+         ObjectMove(0, nuageName, 1, iTime(symbol, timeframe, i - Ichimoku_Kijun + 1), MathMax(ichimokuSenkouSpanA[i-Ichimoku_Kijun], ichimokuSenkouSpanB[i-Ichimoku_Kijun]));
+      }
+   }
 }
-
-for (int i = 0; i < ArraySize(senkouSpanA) - 1; i++)
-{
-if (senkouSpanA[i] != EMPTY_VALUE && senkouSpanB[i] != EMPTY_VALUE)
-{
-string objName = "Ichimoku_Cloud_" + IntegerToString(i);
-Print("Création de l'objet Ichimoku : ", objName); // Vérification
-
-     if (ObjectFind(0, objName) < 0)
-     {
-        ObjectCreate(0, objName, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i), MathMin(senkouSpanA[i], senkouSpanB[i]), iTime(symbol, timeframe, i + 1), MathMax(senkouSpanA[i + 1], senkouSpanB[i + 1]));
-     }
-
-     ObjectSetInteger(0, objName, OBJPROP_HIDDEN, !DisplayOnChart); // Masquer/Afficher selon DisplayOnChart
-  }
-
-}
-}
-
-
-//+------------------------------------------------------------------+
-//| Fonction pour déterminer la couleur de la MA en fonction de la |
-//| tendance                                                        |
-//+------------------------------------------------------------------+
-color MAtendancecouleur()
-{
-    // 1. Calculer la valeur de la MA sur l'UT spécifiée
-    double maCurrent  = iMA(NULL, TrendTimeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE);
-    double maPrevious = iMA(NULL, TrendTimeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE);
-
-    // 2. Déterminer la tendance actuelle
-    color trendColor;
-
-    if (maCurrent > maPrevious)
-    {
-        trendColor = TendanceH; // Tendance haussière
-    }
-    else if (maCurrent < maPrevious)
-    {
-         trendColor = TendanceB; // Tendance baissière
-    }
-    else
-    {
-        // MA plate (horizontale) - utiliser la tendance précédente
-        if (previousTrendColor == clrNONE)
-        {
-            // Si pas de tendance précédente, utiliser la couleur haussière par défaut
-            trendColor = TendanceH;
-        }
-        else
-        {
-            trendColor = previousTrendColor;
-        }
-    }
-
-    // 3. Mémoriser la tendance actuelle pour la prochaine itération
-    previousTrendColor = trendColor;
-
-    // 4. Retourner la couleur
-    return (trendColor);
-}
-
+                
 //+------------------------------------------------------------------+
 //| Fonction pour afficher les Moyennes Mobiles sur le graphique     |
 //+------------------------------------------------------------------+
@@ -1537,19 +1507,36 @@ void DisplayMAOnChart()
             }
             else
             {
-               // Déplacement de l'objet s'il existe
-               ObjectMove(0, objName, 0, iTime(symbol, timeframe, i), maTrend[i]);
-               ObjectMove(0, objName, 1, iTime(symbol, timeframe, i + 1), maTrend[i + 1]);
+                // Déplacement de l'objet s'il existe
+                ObjectMove(0, objName, 0, iTime(symbol, timeframe, i), maTrend[i]);
+                ObjectMove(0, objName, 1, iTime(symbol, timeframe, i + 1), maTrend[i + 1]);
             }
 
-            ObjectSetInteger(0, objName, OBJPROP_COLOR, MAtendancecouleur()); // Affectation de la couleur
+            // --- Déterminer la couleur de la MA en fonction de la tendance
+            color maColor;
+            if (i > 0) // Assurez-vous qu'il y a un point précédent pour la comparaison
+            {
+                if (maTrend[i] < maTrend[i - 1]) {
+                    maColor = TendanceH; // Couleur pour tendance haussière
+                } else if (maTrend[i] > maTrend[i - 1]) {
+                    maColor = TendanceB; // Couleur pour tendance baissière
+                } else {
+                    maColor = TendanceH; // Couleur par défaut si égal, vous pouvez choisir une autre couleur
+                }
+            }
+            else {
+                maColor = TendanceH; // Première valeur, couleur par défaut
+            }
+
+            // Affectation de la couleur
+            ObjectSetInteger(0, objName, OBJPROP_COLOR, maColor);
             ObjectSetInteger(0, objName, OBJPROP_HIDDEN, !DisplayOnChart); // Masquer/Afficher selon DisplayOnChart
-         }
-         else
-         {
+        }
+        else
+        {
             // Suppression de l'objet si la valeur est vide
             ObjectDelete(0, objName);
-         }
+        }
     }
 }
 
