@@ -7,10 +7,16 @@
 #property link      "https://www.votre-site.com"
 #property version   "1.00"
 #property strict
+// RSI
+#property indicator_separate_window
+#property indicator_buffers 1
+#property indicator_color1  clrWhite
+#property indicator_width1 1
 
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
 #include <Arrays\ArrayInt.mqh>
+#include <ChartObjects\ChartObject.mqh>
 
 // Définitions des objets pour l'affichage
 #define TRIGGER_OBJECT_NAME "TS_Trigger_Level"
@@ -69,7 +75,7 @@ input long    MaxSpreadPoints         = 20;              // Spread maximum autor
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
 
 input string trend_settings           = "=== Méthode de détermination de la tendance ===";
-input bool DisplayOnChart             = true; // Afficher les indicateurs sur le graphique
+input bool DisplayOnChart             = true; // Afficher les indicateurs de tendance sur le graphique
 input bool UseTrendDetection          = true; // activer ou désactiver la détection de tendance
 enum TrendMethod {Ichimoku, MA};
 input TrendMethod TrendMethodChoice   = Ichimoku; // Choix de la méthode de tendance
@@ -92,8 +98,9 @@ input ENUM_APPLIED_PRICE MA_Price     = PRICE_CLOSE;     // Prix appliqué pour 
 //--- Paramètres pour la stratégie RSI
 input string  rsi_settings            = "--- Paramètres RSI ---";
 input int     RSI_Period              = 14;              // Période du RSI
-input double  RSI_OverboughtLevel    = 70.0;            // Niveau de surachat
-input double  RSI_OversoldLevel      = 30.0;            // Niveau de survente
+input double  RSI_OverboughtLevel     = 70.0;            // Niveau de surachat
+input double  RSI_OversoldLevel       = 30.0;            // Niveau de survente
+input color RSIcouleur                = clrWhite;        // Couleur du RSI
 
 //--- Paramètres pour la stratégie FVG
 input string  fvg_settings            = "--- Paramètres FVG ---";
@@ -159,6 +166,8 @@ ulong         current_ticket    = 0;    // Pour suivre le ticket de la position 
 int           MA_Handle1[];    // Handles pour les moyennes mobiles
 int           MA_Handle2[];
 int           Ichimoku_Handle[]; // Handles pour l'Ichimoku
+double        rsiBuffer[]; // RSI handle
+int rsiHandle = INVALID_HANDLE; // Ajout d'une variable pour le handle RSI
 
 //--- Enumérations personnalisées
 enum MarketTrend { TrendHaussiere, TrendBaissiere, Indecis };
@@ -208,6 +217,10 @@ void RemoveAllIndicators()
 //+------------------------------------------------------------------+
 int OnInit()
 {
+   // RSI
+   SetIndexBuffer(0, rsiBuffer, INDICATOR_DATA);
+   return(INIT_SUCCEEDED);
+   
     // Initialisation des handles pour Ichimoku
     int ichimokuHandle = iIchimoku(Symbol(), TrendTimeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
     if (ichimokuHandle == INVALID_HANDLE)
@@ -260,12 +273,13 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+ DisplayRSIInSubWindow();
    static int localcurrentTrendMethod = -1;  // ou toute autre valeur
 
-   // ✅ Gérer la visibilité des indicateurs en fonction de UseTrendDetection
+   // Gérer la visibilité des indicateurs en fonction de UseTrendDetection
    SetIndicatorVisibility();
 
-   // ✅ Vérifier si l'indicateur sélectionné a changé et doit être mis à jour
+   // Vérifier si l'indicateur sélectionné a changé et doit être mis à jour
    if (TrendMethodChoice != localcurrentTrendMethod)
    {
       RemoveAllIndicators(); // Supprimer les anciens indicateurs uniquement si on change
@@ -273,7 +287,7 @@ void OnTick()
       isIndicatorLoaded = false; // Indicateur doit être rechargé
    }
 
-   // ✅ Charger l'indicateur uniquement si ce n'est pas déjà fait
+   // Charger l'indicateur uniquement si ce n'est pas déjà fait
    if (DisplayOnChart)
    {
       if (TrendMethodChoice == Ichimoku)
@@ -287,20 +301,20 @@ void OnTick()
       isIndicatorLoaded = true; // Indique que l'indicateur est chargé
    }
 
-   // ✅ Toujours afficher le tableau si activé, indépendamment de UseTrendDetection
+   // Toujours afficher le tableau si activé, indépendamment de UseTrendDetection
    if (DisplayTable)
    {
       DrawDisplayFrame();
    }
 
-   // ✅ Vérifier si les conditions de marché sont favorables
+   // Vérifier si les conditions de marché sont favorables
    if (!IsMarketConditionsSuitable())
    {
       Print("Conditions de marché non favorables.");
       return;
    }
 
-   // ✅ Vérifier si nous sommes sur une nouvelle minute
+   // Vérifier si nous sommes sur une nouvelle minute
    datetime currentTime = TimeCurrent();
    if (currentTime > lastMinuteChecked + 60)
    {
@@ -312,23 +326,23 @@ void OnTick()
       isNewMinute = false;
    }
 
-   // ✅ Mettre à jour les positions existantes (gestion des stops, etc.)
+   // Mettre à jour les positions existantes (gestion des stops, etc.)
    UpdateExistingPositions();
 
-   // ✅ Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
+   // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
    if (!isNewMinute)
    {
       return;
    }
 
-   // ✅ Vérifier les actualités importantes
+   // Vérifier les actualités importantes
    if (UseNewsFilter && IsThereNews(Symbol()))
    {
       Print("Actualités importantes détectées, trading évité.");
       return;
    }
 
-   // ✅ Vérifier les signaux et ouvrir des positions si nécessaire
+   // Vérifier les signaux et ouvrir des positions si nécessaire
    CheckForNewSignals();
 }
 
@@ -906,6 +920,80 @@ CrossSignal CheckStrategySignal(string symbol, int index = 0)
 }
 
 //+------------------------------------------------------------------+
+//| Fonction pour afficher le RSI dans une sous-fenêtre avec un buffer |
+//+------------------------------------------------------------------+
+void DisplayRSIInSubWindow()
+{
+    string symbol           = Symbol();
+    ENUM_TIMEFRAMES tf      = TrendTimeframe;
+    int totalBars           = Bars(symbol, tf);
+
+    // --- Lecture du RSI
+    double rsiValues[];
+    ArraySetAsSeries(rsiValues, true);
+    
+    // On ne recrée le handle qu'en cas d'invalidité
+    if (rsiHandle == INVALID_HANDLE)
+    {
+        rsiHandle = iRSI(symbol, tf, RSI_Period, PRICE_CLOSE);
+       if(rsiHandle < 0)
+        {
+          Print("Erreur creation iRSI : ", GetLastError(), " - iRSI handle : ", rsiHandle); // Ajout diagnostic
+           return;
+        }
+    }
+       
+    int copied = CopyBuffer(rsiHandle, 0, 0, totalBars, rsiValues);
+    if(copied <= 0)
+    {
+      Print("Erreur lors de la copie des données RSI : ", GetLastError(), " - Copied Elements: ", copied, " - rsiHandle : ", rsiHandle);
+      ArrayInitialize(rsiBuffer, EMPTY_VALUE);
+      rsiHandle = INVALID_HANDLE;  // Reset du handle en cas d'erreur
+      return;
+    }
+
+    // --- Copie des données RSI dans le buffer de l'indicateur
+    for(int i = 0; i < totalBars; i++)
+    {
+        if (i < copied)
+        {
+           if(rsiValues[i] != EMPTY_VALUE)
+            {
+                 rsiBuffer[i] = rsiValues[i];
+            }
+            else
+            {
+                rsiBuffer[i] = EMPTY_VALUE;
+              Print("Warning: EMPTY_VALUE detected at index ", i, " in rsiValues.");
+             }
+          }
+        else
+        {
+              rsiBuffer[i] = EMPTY_VALUE;
+              Print("Warning: Set EMPTY_VALUE at index ", i, " because it is out of range.");
+        }
+   }
+}
+
+int OnCalculate(const int rates_total,
+                const int prev_calculated,
+                const datetime& time[],
+                const double& open[],
+                const double& high[],
+                const double& low[],
+                const double& close[],
+                const long& tick_volume[],
+                const long& volume[],
+                const int& spread[])
+{
+    if (rates_total <= 0)
+        return(0);
+
+    DisplayRSIInSubWindow();
+    return(rates_total);
+}
+
+//+------------------------------------------------------------------+
 //| Fonction pour vérifier le signal RSI                             |
 //+------------------------------------------------------------------+
 CrossSignal CheckRSISignal(string symbol, int index = 0)
@@ -1383,266 +1471,84 @@ void ManageGridTrading(CPositionInfo &pos, double &gridDistancePercentage, doubl
 //+------------------------------------------------------------------+
 //| Fonction pour afficher l'Ichimoku sur le graphique             |
 //+------------------------------------------------------------------+
-   //--- Constantes pour Ichimoku (tendance)
-   const int Ichimoku_Tenkan = 9;   // Période Tenkan-sen pour la tendance (fixe)
-   const int Ichimoku_Kijun  = 26;  // Période Kijun-sen pour la tendance (fixe)
-   const int Ichimoku_Senkou = 52;  // Période Senkou Span B pour la tendance (fixe)
-   color  previousTrendColor = clrNONE; // Initialiser à "aucune couleur" au démarrage
-   
+//--- Constantes pour Ichimoku (tendance)
+const int Ichimoku_Tenkan = 9;   // Période Tenkan-sen pour la tendance (fixe)
+const int Ichimoku_Kijun  = 26;  // Période Kijun-sen pour la tendance (fixe)
+const int Ichimoku_Senkou = 52;  // Période Senkou Span B pour la tendance (fixe)
+color  previousTrendColor = clrNONE; // Initialiser à "aucune couleur" au démarrage
+
 void DisplayIchimokuOnChart()
 {
-    if (!DisplayOnChart) return; // Ne rien faire si l'affichage est désactivé
+   if (!DisplayOnChart) return; // Ne rien faire si l'affichage est désactivé
 
-    string symbol = Symbol();
-    ENUM_TIMEFRAMES timeframe = TrendTimeframe;
+   string symbol = Symbol();
+   ENUM_TIMEFRAMES timeframe = TrendTimeframe;
 
-    // --- Obtenir le nombre total de barres dans l'historique
-    int totalBars = Bars(symbol, timeframe);
+   int totalBars = Bars(symbol, timeframe);
 
-    // --- Obtenir les données de l'Ichimoku (Tenkan-sen, Kijun-sen, Senkou Span A et B)
-    double ichimokuTenkan[];
-    double ichimokuKijun[];
-    double ichimokuSenkouSpanA[];
-    double ichimokuSenkouSpanB[];
-    ArraySetAsSeries(ichimokuTenkan, true);
-    ArraySetAsSeries(ichimokuKijun, true);
-    ArraySetAsSeries(ichimokuSenkouSpanA, true);
-    ArraySetAsSeries(ichimokuSenkouSpanB, true);
+   double ichimokuTenkan[];
+   double ichimokuKijun[];
+   double ichimokuSenkouSpanA[];
+   double ichimokuSenkouSpanB[];
 
-    int ichimokuHandle = iIchimoku(symbol, timeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
-    if (ichimokuHandle == INVALID_HANDLE)
-    {
-        Print("Erreur lors de la création du handle Ichimoku : ", GetLastError());
-        return;
-    }
+   ArraySetAsSeries(ichimokuTenkan, true);
+   ArraySetAsSeries(ichimokuKijun, true);
+   ArraySetAsSeries(ichimokuSenkouSpanA, true);
+   ArraySetAsSeries(ichimokuSenkouSpanB, true);
 
-    if (CopyBuffer(ichimokuHandle, 0, 0, totalBars, ichimokuTenkan) <= 0) // Buffer 0 pour Tenkan-sen
-    {
-        Print("Erreur lors de la copie des données Tenkan-sen.");
-        return;
-    }
-    if (CopyBuffer(ichimokuHandle, 1, 0, totalBars, ichimokuKijun) <= 0) // Buffer 1 pour Kijun-sen
-    {
-        Print("Erreur lors de la copie des données Kijun-sen.");
-        return;
-    }
-    if (CopyBuffer(ichimokuHandle, 2, 0, totalBars, ichimokuSenkouSpanA) <= 0) // Buffer 2 pour Senkou Span A
-    {
-        Print("Erreur lors de la copie des données Senkou Span A.");
-        return;
-    }
-    if (CopyBuffer(ichimokuHandle, 3, 0, totalBars, ichimokuSenkouSpanB) <= 0) // Buffer 3 pour Senkou Span B
-    {
-        Print("Erreur lors de la copie des données Senkou Span B.");
-        return;
-    }
+   int ichimokuHandle = iIchimoku(symbol, timeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
+   if(ichimokuHandle == INVALID_HANDLE)
+   {
+      Print("Erreur lors de la création du handle Ichimoku : ", GetLastError());
+      return;
+   }
 
-    // --- Créer/Mettre à jour les objets OBJ_TREND pour Tenkan-sen
-    for (int i = 0; i < totalBars - 1; i++)
-    {
-        string objNameTenkan = "Ichimoku_Tenkan_" + IntegerToString(i);
+   CopyBuffer(ichimokuHandle, 0, 0, totalBars, ichimokuTenkan);
+   CopyBuffer(ichimokuHandle, 1, 0, totalBars, ichimokuKijun);
+   CopyBuffer(ichimokuHandle, 2, 0, totalBars, ichimokuSenkouSpanA);
+   CopyBuffer(ichimokuHandle, 3, 0, totalBars, ichimokuSenkouSpanB);
 
-        if (ichimokuTenkan[i] != EMPTY_VALUE)
-        {
-            // --- Création de l'objet si inexistant (Tenkan-sen)
-            if (ObjectFind(0, objNameTenkan) < 0)
-            {
-                if(ObjectCreate(0, objNameTenkan, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuTenkan[i], iTime(symbol, timeframe, i + 1), ichimokuTenkan[i + 1]))
-                {
-                    
-                }
-                else
-                {
-                    Print("Échec création Tenkan-sen : ", objNameTenkan, " Error : ", GetLastError());
-                }
-            }
-            else
-            {
-                // Déplacement de l'objet s'il existe (Tenkan-sen)
-                ObjectMove(0, objNameTenkan, 0, iTime(symbol, timeframe, i), ichimokuTenkan[i]);
-                ObjectMove(0, objNameTenkan, 1, iTime(symbol, timeframe, i + 1), ichimokuTenkan[i + 1]);
-            }
+   // Supprimer les anciens objets Tenkan et Kijun avant de redessiner
+   ObjectsDeleteAll(0, "Tenkan_");
+   ObjectsDeleteAll(0, "Kijun_");
 
-            // --- Déterminer la couleur de Tenkan-sen en fonction de la tendance
-            color tenkanColor;
-            if (i > 0)
-            {
-                  if (ichimokuTenkan[i] > ichimokuTenkan[i - 1]) { 
-                    tenkanColor = previousTrendColor;
-                } else if (ichimokuTenkan[i] < ichimokuTenkan[i - 1]) { 
-                    tenkanColor = previousTrendColor;
-                } else {
-                    tenkanColor = previousTrendColor; 
-                }
-            } else {
-                tenkanColor = previousTrendColor; 
-            }
+   // Boucle pour dessiner les lignes et le nuage
+   for(int i = 0; i < totalBars - 1; i++) // Aller jusqu'à totalBars - 1 pour avoir un point suivant
+   {
+      // Tenkan-sen (segments de ligne)
+      string tenkanName = "Tenkan_" + IntegerToString(i);
+      ObjectCreate(0, tenkanName, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuTenkan[i], iTime(symbol, timeframe, i+1), ichimokuTenkan[i+1]);
+      ObjectSetInteger(0, tenkanName, OBJPROP_COLOR, previousTrendColor); // Utilisation de la variable existante pour Tenkan
+      ObjectSetInteger(0, tenkanName, OBJPROP_STYLE, STYLE_SOLID); // Style de ligne continue
+      ObjectSetInteger(0, tenkanName, OBJPROP_WIDTH, 1);       // Épaisseur de la ligne
 
-            ObjectSetInteger(0, objNameTenkan, OBJPROP_COLOR, tenkanColor);
-            ObjectSetInteger(0, objNameTenkan, OBJPROP_HIDDEN, !DisplayOnChart);
-        }
-        else
-        {
-            // Suppression de l'objet si la valeur est vide (Tenkan-sen)
-            ObjectDelete(0, objNameTenkan);
-        }
-    }
+      // Kijun-sen (segments de ligne)
+      string kijunName = "Kijun_" + IntegerToString(i);
+      ObjectCreate(0, kijunName, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuKijun[i], iTime(symbol, timeframe, i+1), ichimokuKijun[i+1]);
+      ObjectSetInteger(0, kijunName, OBJPROP_COLOR, previousTrendColor); // Utilisation de la variable existante pour Kijun
+      ObjectSetInteger(0, kijunName, OBJPROP_STYLE, STYLE_SOLID); // Style de ligne continue
+      ObjectSetInteger(0, kijunName, OBJPROP_WIDTH, 1);       // Épaisseur de la ligne
 
-    // --- Créer/Mettre à jour les objets OBJ_TREND pour Kijun-sen
-    for (int i = 0; i < totalBars - 1; i++)
-    {
-        string objNameKijun = "Ichimoku_Kijun_" + IntegerToString(i);
+      // Senkou Span A et B (Nuage) - Dessiné 26 périodes en avance
+      if(i >= Ichimoku_Kijun) { // Vérifier si suffisamment de données pour le nuage
+         string nuageName = "Nuage_" + IntegerToString(i);
+         color nuageColor;
+         if (ichimokuSenkouSpanA[i - Ichimoku_Kijun] > ichimokuSenkouSpanB[i - Ichimoku_Kijun]) {
+             nuageColor = TendanceH; // Senkou A au-dessus de Senkou B
+         } else {
+             nuageColor = TendanceB; // Senkou A en-dessous de Senkou B
+         }
 
-        if (ichimokuKijun[i] != EMPTY_VALUE)
-        {
-            // --- Création de l'objet si inexistant (Kijun-sen)
-            if (ObjectFind(0, objNameKijun) < 0)
-            {
-                if(ObjectCreate(0, objNameKijun, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuKijun[i], iTime(symbol, timeframe, i + 1), ichimokuKijun[i + 1]))
-                {
-                   
-                }
-                else
-                {
-                    Print("Échec création Kijun-sen : ", objNameKijun, " Error : ", GetLastError());
-                }
-            }
-            else
-            {
-                // Déplacement de l'objet s'il existe (Kijun-sen)
-                ObjectMove(0, objNameKijun, 0, iTime(symbol, timeframe, i), ichimokuKijun[i]);
-                ObjectMove(0, objNameKijun, 1, iTime(symbol, timeframe, i + 1), ichimokuKijun[i + 1]);
-            }
+         if(ObjectFind(0, nuageName) == -1)
+            ObjectCreate(0, nuageName, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i-Ichimoku_Kijun), ichimokuSenkouSpanA[i-Ichimoku_Kijun], iTime(symbol, timeframe, i - Ichimoku_Kijun + 1), ichimokuSenkouSpanB[i-Ichimoku_Kijun]);
 
-            // --- Déterminer la couleur de Kijun-sen en fonction de la tendance
-            color kijunColor;
-            if (i > 0)
-            {
-                if (ichimokuKijun[i] > ichimokuKijun[i - 1]) { 
-                    kijunColor = previousTrendColor;
-                } else if (ichimokuKijun[i] < ichimokuKijun[i - 1]) { 
-                    kijunColor = previousTrendColor;
-                } else {
-                    kijunColor = previousTrendColor; 
-                }
-            } else {
-                kijunColor = previousTrendColor; 
-            }
-
-            ObjectSetInteger(0, objNameKijun, OBJPROP_COLOR, kijunColor);
-            ObjectSetInteger(0, objNameKijun, OBJPROP_HIDDEN, !DisplayOnChart);
-        }
-        else
-        {
-            // Suppression de l'objet si la valeur est vide (Kijun-sen)
-            ObjectDelete(0, objNameKijun);
-        }
-    }
-
-    // --- Créer/Mettre à jour les objets OBJ_TREND pour Senkou Span A et B
-    int decalage = 26;
-    for (int i = 0; i < totalBars - decalage - 1; i++)
-    {
-        string objNameSenkouA = "Ichimoku_SenkouA_" + IntegerToString(i);
-        string objNameSenkouB = "Ichimoku_SenkouB_" + IntegerToString(i);
-        string objNameNuage = "Ichimoku_Nuage_" + IntegerToString(i);
-
-        if (ichimokuSenkouSpanA[i] != EMPTY_VALUE && ichimokuSenkouSpanB[i] != EMPTY_VALUE)
-        {
-            // --- Création de l'objet si inexistant (Senkou Span A)
-            if (ObjectFind(0, objNameSenkouA) < 0)
-            {
-                if(ObjectCreate(0, objNameSenkouA, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuSenkouSpanA[i], iTime(symbol, timeframe, i + 1), ichimokuSenkouSpanA[i + 1]))
-                {
-                   
-                }
-                else
-                {
-                    Print("Échec création Senkou Span A : ", objNameSenkouA, " Error : ", GetLastError());
-                }
-            }
-            else
-            {
-                // Déplacement de l'objet s'il existe (Senkou Span A)
-                ObjectMove(0, objNameSenkouA, 0, iTime(symbol, timeframe, i), ichimokuSenkouSpanA[i]);
-                ObjectMove(0, objNameSenkouA, 1, iTime(symbol, timeframe, i + 1), ichimokuSenkouSpanA[i + 1]);
-            }
-
-            // --- Définir la couleur de Senkou Span A
-            color senkouAColor = previousTrendColor;
-
-            ObjectSetInteger(0, objNameSenkouA, OBJPROP_COLOR, senkouAColor);
-            ObjectSetInteger(0, objNameSenkouA, OBJPROP_HIDDEN, !DisplayOnChart);
-
-            // --- Création de l'objet si inexistant (Senkou Span B)
-            if (ObjectFind(0, objNameSenkouB) < 0)
-            {
-                if(ObjectCreate(0, objNameSenkouB, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuSenkouSpanB[i], iTime(symbol, timeframe, i + 1), ichimokuSenkouSpanB[i + 1]))
-                {
-                    
-                }
-                else
-                {
-                    Print("Échec création Senkou Span B : ", objNameSenkouB, " Error : ", GetLastError());
-                }
-            }
-            else
-            {
-                // Déplacement de l'objet s'il existe (Senkou Span B)
-                ObjectMove(0, objNameSenkouB, 0, iTime(symbol, timeframe, i), ichimokuSenkouSpanB[i]);
-                ObjectMove(0, objNameSenkouB, 1, iTime(symbol, timeframe, i + 1), ichimokuSenkouSpanB[i + 1]);
-            }
-
-               // --- Définir la couleur de Senkou Span B
-            color senkouBColor = previousTrendColor;
-
-            ObjectSetInteger(0, objNameSenkouB, OBJPROP_COLOR, senkouBColor);
-            ObjectSetInteger(0, objNameSenkouB, OBJPROP_HIDDEN, !DisplayOnChart);
-
-            // --- Déterminer la couleur du nuage
-            color nuageColor;
-            if (ichimokuSenkouSpanA[i] > ichimokuSenkouSpanB[i])
-            {
-                nuageColor = TendanceH; // Couleur haussière
-            }
-            else
-            {
-                nuageColor = TendanceB; // Couleur baissière
-            }
-
-            // --- Créer/Mettre à jour l'objet nuage
-            if (ObjectFind(0, objNameNuage) < 0)
-            {
-                if (ObjectCreate(0, objNameNuage, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i), MathMin(ichimokuSenkouSpanA[i], ichimokuSenkouSpanB[i]), iTime(symbol, timeframe, i + 1), MathMax(ichimokuSenkouSpanA[i + 1], ichimokuSenkouSpanB[i + 1])))
-                {
-                    
-                }
-                else
-                {
-                    Print("Échec création nuage : ", objNameNuage, " Error : ", GetLastError());
-                }
-            }
-            else
-            {
-                // Déplacement de l'objet s'il existe (nuage)
-                ObjectMove(0, objNameNuage, 0, iTime(symbol, timeframe, i), MathMin(ichimokuSenkouSpanA[i], ichimokuSenkouSpanB[i]));
-                ObjectMove(0, objNameNuage, 1, iTime(symbol, timeframe, i + 1), MathMax(ichimokuSenkouSpanA[i + 1], ichimokuSenkouSpanB[i + 1]));
-            }
-
-            ObjectSetInteger(0, objNameNuage, OBJPROP_COLOR, nuageColor);
-            ObjectSetInteger(0, objNameNuage, OBJPROP_HIDDEN, !DisplayOnChart);
-            ObjectSetInteger(0, objNameNuage, OBJPROP_BACK, true); // Mettre l'objet au fond
-            ObjectSetInteger(0, objNameNuage, OBJPROP_WIDTH, 2); // Définir l'épaisseur du trait
-        }
-        else
-        {
-            // Suppression des objets si les valeurs sont vides (Senkou Span A, Senkou Span B et nuage)
-            ObjectDelete(0, objNameSenkouA);
-            ObjectDelete(0, objNameSenkouB);
-            ObjectDelete(0, objNameNuage);
-        }
-    }
-}                
+         ObjectSetInteger(0, nuageName, OBJPROP_COLOR,  nuageColor);
+         ObjectSetInteger(0, nuageName, OBJPROP_BACK, true);
+         ObjectMove(0, nuageName, 0, iTime(symbol, timeframe, i-Ichimoku_Kijun), MathMin(ichimokuSenkouSpanA[i-Ichimoku_Kijun], ichimokuSenkouSpanB[i-Ichimoku_Kijun]));
+         ObjectMove(0, nuageName, 1, iTime(symbol, timeframe, i - Ichimoku_Kijun + 1), MathMax(ichimokuSenkouSpanA[i-Ichimoku_Kijun], ichimokuSenkouSpanB[i-Ichimoku_Kijun]));
+      }
+   }
+}
                 
 //+------------------------------------------------------------------+
 //| Fonction pour afficher les Moyennes Mobiles sur le graphique     |
@@ -2939,4 +2845,4 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
 }
 //+------------------------------------------------------------------+
 //| Fin du code                                                      |
-//+------------------------------------------------------------------+ 
+//+------------------------------------------------------------------+  
