@@ -7,11 +7,6 @@
 #property link      "https://www.votre-site.com"
 #property version   "1.00"
 #property strict
-// RSI
-#property indicator_separate_window
-#property indicator_buffers 1
-#property indicator_color1  clrWhite
-#property indicator_width1 1
 
 #include <Trade\Trade.mqh>
 #include <Trade\PositionInfo.mqh>
@@ -98,9 +93,6 @@ input ENUM_APPLIED_PRICE MA_Price     = PRICE_CLOSE;     // Prix appliqué pour 
 //--- Paramètres pour la stratégie RSI
 input string  rsi_settings            = "--- Paramètres RSI ---";
 input int     RSI_Period              = 14;              // Période du RSI
-input double  RSI_OverboughtLevel     = 70.0;            // Niveau de surachat
-input double  RSI_OversoldLevel       = 30.0;            // Niveau de survente
-input color RSIcouleur                = clrWhite;        // Couleur du RSI
 
 //--- Paramètres pour la stratégie FVG
 input string  fvg_settings            = "--- Paramètres FVG ---";
@@ -163,11 +155,10 @@ datetime      lastMinuteChecked = 0;
 ulong         current_ticket    = 0;    // Pour suivre le ticket de la position courante
 
 //--- Variables pour les handles des indicateurs
-int           MA_Handle1[];    // Handles pour les moyennes mobiles
+int           MA_Handle1[];      // Handles pour les moyennes mobiles
 int           MA_Handle2[];
 int           Ichimoku_Handle[]; // Handles pour l'Ichimoku
-double        rsiBuffer[]; // RSI handle
-int rsiHandle = INVALID_HANDLE; // Ajout d'une variable pour le handle RSI
+int           RSIHandle;         // Handle pour le RSI
 
 //--- Enumérations personnalisées
 enum MarketTrend { TrendHaussiere, TrendBaissiere, Indecis };
@@ -217,10 +208,12 @@ void RemoveAllIndicators()
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   // RSI
-   SetIndexBuffer(0, rsiBuffer, INDICATOR_DATA);
-   return(INIT_SUCCEEDED);
+  // Créer un indicateur RSI
+   RSIHandle = iRSI(_Symbol, _Period, RSI_Period, PRICE_CLOSE);
    
+   // Ajouter une sous-fenêtre au graphique
+   ChartSetInteger(0, CHART_WINDOWS_TOTAL, 2);
+
     // Initialisation des handles pour Ichimoku
     int ichimokuHandle = iIchimoku(Symbol(), TrendTimeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
     if (ichimokuHandle == INVALID_HANDLE)
@@ -254,6 +247,13 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
+  // Libérer le handle de l'indicateur
+   IndicatorRelease(RSIHandle);
+   
+   // Supprimer les objets
+   ObjectDelete(0, "RSI_Ligne_70");
+   ObjectDelete(0, "RSI_Ligne_30");
+   
    // Nettoyer les objets graphiques
    CleanupLabels(); // Appel à la fonction de nettoyage des labels
 
@@ -273,7 +273,20 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
- DisplayRSIInSubWindow();
+   switch(Strategy) {
+      case MA_Crossover:
+         DisplayMAsignal();
+         break;
+      
+      case RSI_OSOB:
+         DisplayRSIInSubWindow();
+         break;
+      
+      case FVG_Strategy:
+         DisplayFVGsignal();
+         break;
+   }
+   
    static int localcurrentTrendMethod = -1;  // ou toute autre valeur
 
    // Gérer la visibilité des indicateurs en fonction de UseTrendDetection
@@ -920,77 +933,53 @@ CrossSignal CheckStrategySignal(string symbol, int index = 0)
 }
 
 //+------------------------------------------------------------------+
-//| Fonction pour afficher le RSI dans une sous-fenêtre avec un buffer |
+//| Fonction pour vérifier si le RSI et deja crée                    |
+//+------------------------------------------------------------------+
+bool IsRSIIndicatorPresent()
+{
+   int totalIndicators = ChartIndicatorsTotal(0, 1);
+   
+   for(int i = 0; i < totalIndicators; i++)
+   {
+      string indicatorName = ChartIndicatorName(0, 1, i);
+      
+      // Vérification plus stricte
+      if(StringFind(indicatorName, "RSI") != -1 && 
+         StringFind(indicatorName, "Custom RSI") != -1)
+      {
+         return true;
+      }
+   }
+   
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour afficher le RSI dans un sous-graphique séparé      |
 //+------------------------------------------------------------------+
 void DisplayRSIInSubWindow()
 {
-    string symbol           = Symbol();
-    ENUM_TIMEFRAMES tf      = TrendTimeframe;
-    int totalBars           = Bars(symbol, tf);
-
-    // --- Lecture du RSI
-    double rsiValues[];
-    ArraySetAsSeries(rsiValues, true);
-    
-    // On ne recrée le handle qu'en cas d'invalidité
-    if (rsiHandle == INVALID_HANDLE)
-    {
-        rsiHandle = iRSI(symbol, tf, RSI_Period, PRICE_CLOSE);
-       if(rsiHandle < 0)
-        {
-          Print("Erreur creation iRSI : ", GetLastError(), " - iRSI handle : ", rsiHandle); // Ajout diagnostic
-           return;
-        }
-    }
-       
-    int copied = CopyBuffer(rsiHandle, 0, 0, totalBars, rsiValues);
-    if(copied <= 0)
-    {
-      Print("Erreur lors de la copie des données RSI : ", GetLastError(), " - Copied Elements: ", copied, " - rsiHandle : ", rsiHandle);
-      ArrayInitialize(rsiBuffer, EMPTY_VALUE);
-      rsiHandle = INVALID_HANDLE;  // Reset du handle en cas d'erreur
-      return;
-    }
-
-    // --- Copie des données RSI dans le buffer de l'indicateur
-    for(int i = 0; i < totalBars; i++)
-    {
-        if (i < copied)
-        {
-           if(rsiValues[i] != EMPTY_VALUE)
-            {
-                 rsiBuffer[i] = rsiValues[i];
-            }
-            else
-            {
-                rsiBuffer[i] = EMPTY_VALUE;
-              Print("Warning: EMPTY_VALUE detected at index ", i, " in rsiValues.");
-             }
-          }
-        else
-        {
-              rsiBuffer[i] = EMPTY_VALUE;
-              Print("Warning: Set EMPTY_VALUE at index ", i, " because it is out of range.");
-        }
-   }
-}
-
-int OnCalculate(const int rates_total,
-                const int prev_calculated,
-                const datetime& time[],
-                const double& open[],
-                const double& high[],
-                const double& low[],
-                const double& close[],
-                const long& tick_volume[],
-                const long& volume[],
-                const int& spread[])
-{
-    if (rates_total <= 0)
-        return(0);
-
-    DisplayRSIInSubWindow();
-    return(rates_total);
+   // Tableau pour stocker la valeur du RSI
+   double RSIBuffer[];
+   ArraySetAsSeries(RSIBuffer, true);
+   
+   // Copier les données du RSI
+   CopyBuffer(RSIHandle, 0, 0, 1, RSIBuffer);
+   
+   // Valeur du RSI
+   double rsi = RSIBuffer[0];
+   
+   // Dessiner des lignes pour les zones de surachat et survente
+   ChartIndicatorAdd(0, 1, RSIHandle);
+   
+   // Lignes pour les niveaux de surachat et survente
+   ObjectCreate(0, "RSI_Ligne_Surachat", OBJ_HLINE, 1, 70, 70);
+   ObjectSetInteger(0, "RSI_Ligne_Surachat", OBJPROP_COLOR, clrRed);
+   ObjectSetInteger(0, "RSI_Ligne_Surachat", OBJPROP_STYLE, STYLE_DASH);
+   
+   ObjectCreate(0, "RSI_Ligne_Survente", OBJ_HLINE, 1, 30, 30);
+   ObjectSetInteger(0, "RSI_Ligne_Survente", OBJPROP_COLOR, clrRed);
+   ObjectSetInteger(0, "RSI_Ligne_Survente", OBJPROP_STYLE, STYLE_DASH);
 }
 
 //+------------------------------------------------------------------+
@@ -1018,17 +1007,24 @@ CrossSignal CheckRSISignal(string symbol, int index = 0)
    }
 
    // Vérifier les conditions de surachat et survente
-   if (rsi[0] < RSI_OversoldLevel && rsi[1] >= RSI_OversoldLevel)
+   if (rsi[0] < 30 && rsi[1] >= 30)
    {
       return Achat;
    }
-   else if (rsi[0] > RSI_OverboughtLevel && rsi[1] <= RSI_OverboughtLevel)
+   else if (rsi[0] > 70 && rsi[1] <= 70)
    {
       return Vente;
    }
 
    return Aucun;
 }
+
+//+------------------------------------------------------------------+
+//| Fonction pour afficher les Moyennes Mobiles de signal            |
+//+------------------------------------------------------------------+
+void DisplayMAsignal()
+{
+} 
 
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier le signal de croisement des MM            |
@@ -1060,6 +1056,13 @@ CrossSignal CheckMACrossover(string symbol, int index = 0)
 
    return Aucun;
 }
+
+//+------------------------------------------------------------------+
+//| Fonction pour afficher les FVG de signal                         |
+//+------------------------------------------------------------------+
+void DisplayFVGsignal()
+{
+} 
 
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier le signal FVG                             |
@@ -1549,9 +1552,9 @@ void DisplayIchimokuOnChart()
       }
    }
 }
-                
+
 //+------------------------------------------------------------------+
-//| Fonction pour afficher les Moyennes Mobiles sur le graphique     |
+//| Fonction pour afficher la Moyennes Mobiles de tendance           |
 //+------------------------------------------------------------------+
 void DisplayMAOnChart()
 {
@@ -2152,7 +2155,7 @@ void CleanupDisplayFrame()
    string frameName = "DisplayFrame_" + currentSymbol;
    ObjectDelete(0, frameName);
 }
-                           
+
 //+------------------------------------------------------------------+
 //| Fonction pour mettre à jour l'affichage du SL                    |
 //+------------------------------------------------------------------+
