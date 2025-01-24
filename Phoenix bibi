@@ -129,7 +129,7 @@ input StopType StopLossType           = SL_Classique;    // Type de Stop Loss
 
 input string  sl_classique_settings   = "--- Paramètres SL Classique ---";
 input double  StopLossCurrency        = 1.0;             // Stop Loss en devise (0 pour aucun SL)
-input double  TakeProfitCurrency      = 10.0;            // Take Profit en devise (0 pour aucun TP)
+input double  TakeProfitCurrency      = 1.0;            // Take Profit en devise (0 pour aucun TP)
 
 input string  sl_suiveur_settings     = "=== Paramètres du SL suiveur ===";
 input string  reglageslsuiveur        = "--- réglage SLsuiveur ---";
@@ -295,6 +295,8 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   // Mettre à jour les positions existantes (gestion des stops, etc.)
+   UpdateExistingPositions();
    switch(Strategy) {
       case MA_Crossover:
          if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0) 
@@ -387,9 +389,6 @@ void OnTick()
       isNewMinute = false;
    }
 
-   // Mettre à jour les positions existantes (gestion des stops, etc.)
-   UpdateExistingPositions();
-
    // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
    if (!isNewMinute)
    {
@@ -405,6 +404,7 @@ void OnTick()
 
    // Vérifier les signaux et ouvrir des positions si nécessaire
    CheckForNewSignals();
+
 }
 
 //+------------------------------------------------------------------+
@@ -1533,6 +1533,7 @@ bool IsPositionOpen(string symbol)
 //+------------------------------------------------------------------+
 void UpdateExistingPositions()
 {
+
    for (int i = 0; i < PositionsTotal(); i++)
    {
       ulong ticket = PositionGetTicket(i);
@@ -1548,6 +1549,7 @@ void UpdateExistingPositions()
          continue;
       }
 
+      // Lire les informations de la position
       string symbol = PositionGetString(POSITION_SYMBOL);
       ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
       double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -1555,29 +1557,133 @@ void UpdateExistingPositions()
       double sl = PositionGetDouble(POSITION_SL);
       double tp = PositionGetDouble(POSITION_TP);
       double lotSize = PositionGetDouble(POSITION_VOLUME);
+      long positionMagicNumber = PositionGetInteger(POSITION_MAGIC);
 
-      // Vérifier si le Magic Number doit être utilisé
-      if (UseMagicNumber && position.Magic() != MagicNumber)
+      switch (StopLossType)
       {
-         // Ignorer les positions avec un Magic Number différent
-         continue;
-      }
+         case SL_Classique:
+            if (UseMagicNumber == true && positionMagicNumber == MagicNumber)
+            {
+                // Logique pour le Stop Loss classique avec le même Magic Number
+                double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+                int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+                double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
 
-      // Mettre à jour le Stop Loss suiveur si activé
-      if (StopLossType == SL_Suiveur)
-      {
-         double seuilDeclenchementPercentage = 0.0, respirationPercentage = 0.0, slSuiveurPercentage = 0.0;
-         double seuilDeclenchementPoints = 0.0, respirationPoints = 0.0, slSuiveurPoints = 0.0;
-         UpdateTrailingStop(symbol, ticket, type, openPrice, currentPrice, sl,
-                            seuilDeclenchementPercentage, respirationPercentage, slSuiveurPercentage,
-                            seuilDeclenchementPoints, respirationPoints, slSuiveurPoints);
+                // Calculer les niveaux de SL et TP en pips
+                double slPips = NormalizeDouble(StopLossCurrency / (lotSize * pointValue), digits);
+                double tpPips = NormalizeDouble(TakeProfitCurrency / (lotSize * pointValue), digits);
 
-         Print("Seuil de déclenchement en pourcentage de l'équité: ", seuilDeclenchementPercentage, "%");
-         Print("Respiration en pourcentage de l'équité: ", respirationPercentage, "%");
-         Print("SL suiveur en pourcentage de l'équité: ", slSuiveurPercentage, "%");
-         Print("Seuil de déclenchement en points: ", seuilDeclenchementPoints);
-         Print("Respiration en points: ", respirationPoints);
-         Print("SL suiveur en points: ", slSuiveurPoints);
+                // Calculer les niveaux de SL et TP en prix
+                double slPrice = 0.0;
+                double tpPrice = 0.0;
+
+                if (type == POSITION_TYPE_BUY)
+                {
+                    slPrice = NormalizeDouble(openPrice - slPips * point, digits);
+                    tpPrice = NormalizeDouble(openPrice + tpPips * point, digits);
+                }
+                else if (type == POSITION_TYPE_SELL)
+                {
+                    slPrice = NormalizeDouble(openPrice + slPips * point, digits);
+                    tpPrice = NormalizeDouble(openPrice - tpPips * point, digits);
+                }
+                  double currentSl = PositionGetDouble(POSITION_SL);
+                double currentTp = PositionGetDouble(POSITION_TP);
+                 // Modifier la position si nécessaire
+                if (slPrice != currentSl || tpPrice != currentTp)
+                {
+                     bool modified = trade.PositionModify(ticket, slPrice, tpPrice);
+                     if(modified){
+                        Print("Position modifiée: SL=", slPrice, ", TP=", tpPrice, " (ticket=", ticket,")");
+                     } else{
+                          Print("Erreur modification de la position : ", trade.ResultRetcodeDescription());
+                    }
+                }
+                else
+                {
+                        //Pas de changement
+                        //Print("Position inchangée: SL=", currentSl, ", TP=", currentTp, " (ticket=", ticket,")");
+                }
+            }
+            else if (!UseMagicNumber)
+            {
+               // Logique pour le Stop Loss classique sans restriction de Magic Number
+                double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+                int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+                double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+
+                // Calculer les niveaux de SL et TP en pips
+                double slPips = NormalizeDouble(StopLossCurrency / (lotSize * pointValue), digits);
+                double tpPips = NormalizeDouble(TakeProfitCurrency / (lotSize * pointValue), digits);
+
+                // Calculer les niveaux de SL et TP en prix
+                double slPrice = 0.0;
+                double tpPrice = 0.0;
+
+                if (type == POSITION_TYPE_BUY)
+                {
+                    slPrice = NormalizeDouble(openPrice - slPips * point, digits);
+                    tpPrice = NormalizeDouble(openPrice + tpPips * point, digits);
+                }
+                else if (type == POSITION_TYPE_SELL)
+                {
+                    slPrice = NormalizeDouble(openPrice + slPips * point, digits);
+                    tpPrice = NormalizeDouble(openPrice - tpPips * point, digits);
+                }
+                double currentSl = PositionGetDouble(POSITION_SL);
+                double currentTp = PositionGetDouble(POSITION_TP);
+                // Modifier la position si nécessaire
+                if (slPrice != currentSl || tpPrice != currentTp)
+                {
+                     bool modified = trade.PositionModify(ticket, slPrice, tpPrice);
+                     if(modified){
+                        Print("Position modifiée: SL=", slPrice, ", TP=", tpPrice, " (ticket=", ticket,")");
+                     } else{
+                          Print("Erreur modification de la position : ", trade.ResultRetcodeDescription());
+                    }
+                }
+                else
+                {
+                        //Pas de changement
+                        //Print("Position inchangée: SL=", currentSl, ", TP=", currentTp, " (ticket=", ticket,")");
+                }
+            }
+            break;
+
+
+         case SL_Suiveur:
+            if (UseMagicNumber && positionMagicNumber == MagicNumber)
+            {
+               double seuilDeclenchementPercentage = 0.0, respirationPercentage = 0.0, slSuiveurPercentage = 0.0;
+               double seuilDeclenchementPoints = 0.0, respirationPoints = 0.0, slSuiveurPoints = 0.0;
+               UpdateTrailingStop(symbol, ticket, type, openPrice, currentPrice, sl,
+                                  seuilDeclenchementPercentage, respirationPercentage, slSuiveurPercentage,
+                                  seuilDeclenchementPoints, respirationPoints, slSuiveurPoints);
+
+            }
+            else if (!UseMagicNumber)
+            {
+               // Logique pour le Stop Loss suiveur sans restriction de Magic Number
+               // Insérer ici la logique générale pour ce cas
+            }
+            break;
+
+         case GridTrading:
+            if (UseMagicNumber && positionMagicNumber == MagicNumber)
+            {
+               // Logique pour le Grid Trading avec le même Magic Number
+               // Insérer ici la logique spécifique pour ce cas
+            }
+            else if (!UseMagicNumber)
+            {
+               // Logique pour le Grid Trading sans restriction de Magic Number
+               // Insérer ici la logique générale pour ce cas
+            }
+            break;
+
+         default:
+            Print("Type de Stop Loss non reconnu: ", StopLossType);
+            break;
       }
 
       // Vérifier si le Take Profit ou le Stop Loss a été atteint
@@ -1585,34 +1691,7 @@ void UpdateExistingPositions()
    }
 }
 
-//+------------------------------------------------------------------+
-//| Fonction de modification de position                              |
-//+------------------------------------------------------------------+
-bool ModifyPosition(ulong ticket, double sl, double tp)
-{
-   if (!position.SelectByTicket(ticket))
-   {
-      Print("Erreur de sélection du ticket : ", ticket);
-      return false;
-   }
-   
-   // Vérifier si le Magic Number doit être utilisé
-   if (UseMagicNumber && position.Magic() != MagicNumber)
-   {
-      Print("Magic number invalide pour le ticket : ", ticket);
-      return false;
-   }
-   
-   // Normalisation des niveaux SL et TP
-   sl = NormalizeDouble(sl, _Digits);
-   tp = NormalizeDouble(tp, _Digits);
-   
-   // Vérification si la modification est nécessaire
-   if (position.StopLoss() == sl && position.TakeProfit() == tp)
-      return true;
-      
-   return trade.PositionModify(ticket, sl, tp);
-}
+
 
 //+------------------------------------------------------------------+
 //| Fonction de fermeture de position                                 |
@@ -1656,52 +1735,6 @@ void CloseAllPositions(string symbol = "")
       {
          Print("Erreur de fermeture de la position : ", GetLastError());
       }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction de gestion du SL classique                               |
-//+------------------------------------------------------------------+
-void ManageClassicSL(string symbol)
-{
-   if (!position.Select(symbol))
-      return;
-
-   // Vérifier si le Magic Number doit être utilisé
-   if (UseMagicNumber && position.Magic() != MagicNumber)
-      return;
-
-   double lotSize = position.Volume(); // Utiliser le volume de la position existante
-   double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
-   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-
-   // Calculer les niveaux de SL et TP en pips
-   double slPips = NormalizeDouble(StopLossCurrency / (lotSize * pointValue), digits);
-   double tpPips = NormalizeDouble(TakeProfitCurrency / (lotSize * pointValue), digits);
-
-   // Récupérer le prix d'ouverture de la position
-   double openPrice = position.PriceOpen();
-
-   // Calculer les niveaux de SL et TP en prix
-   double slPrice = 0.0;
-   double tpPrice = 0.0;
-
-   if (position.PositionType() == POSITION_TYPE_BUY)
-   {
-      slPrice = NormalizeDouble(openPrice - slPips * point, digits);
-      tpPrice = NormalizeDouble(openPrice + tpPips * point, digits);
-   }
-   else if (position.PositionType() == POSITION_TYPE_SELL)
-   {
-      slPrice = NormalizeDouble(openPrice + slPips * point, digits);
-      tpPrice = NormalizeDouble(openPrice - tpPips * point, digits);
-   }
-
-   // Modifier la position si nécessaire
-   if (!ModifyPosition(position.Ticket(), slPrice, tpPrice))
-   {
-      Print("Erreur lors de la modification du SL classique pour ", symbol, ": ", GetLastError());
    }
 }
 
