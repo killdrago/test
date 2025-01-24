@@ -1199,11 +1199,11 @@ CrossSignal CheckMACrossover(string symbol, int index = 0)
    }
 
    // Vérifier le croisement des moyennes mobiles
-   if (ma1[0] > ma2[0] && ma1[1] <= ma2[1])
+   if (ma1[0] < ma2[0] && ma1[1] <= ma2[1])
    {
       return Achat;
    }
-   else if (ma1[0] < ma2[0] && ma1[1] >= ma2[1])
+   else if (ma1[0] > ma2[0] && ma1[1] >= ma2[1])
    {
       return Vente;
    }
@@ -3137,6 +3137,7 @@ bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, doubl
 {
    double slPercentage = 0.0, tpPercentage = 0.0, slPoints = 0.0, tpPoints = 0.0;
 
+   // Calcul des SL et TP en fonction du type de SL choisi
    if (StopLossType == SL_Classique)
    {
       CalculateClassicSLTP(symbol, orderType, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
@@ -3151,8 +3152,25 @@ bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, doubl
       CalculateGridSLTP(symbol, orderType, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
    }
 
-   // Ouvrir la position
-   if (trade.PositionOpen(symbol, orderType, volume, 0, sl, tp, comment))
+   // Préparer la structure MqlTradeRequest
+   MqlTradeRequest request;
+   MqlTradeResult result;
+   ZeroMemory(request);
+   ZeroMemory(result);
+
+   request.action = TRADE_ACTION_DEAL;
+   request.symbol = symbol;
+   request.volume = volume;
+   request.type = orderType;
+   request.price = (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
+   request.sl = sl;
+   request.tp = tp;
+   request.deviation = 10; // Slippage autorisé
+   request.magic = MagicNumber; // Ajout du Magic Number
+   request.comment = comment;
+
+   // Envoyer l'ordre
+   if (OrderSend(request, result))
    {
       Print("Position ouverte pour ", symbol, " - Type: ", EnumToString(orderType), " - Volume: ", volume);
       Print("SL: ", sl, " - TP: ", tp);
@@ -3162,7 +3180,7 @@ bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, doubl
       Print("TP en points: ", tpPoints);
 
       // Envoyer des notifications
-      SendNotifications(symbol, orderType, volume, (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID), sl, tp);
+      SendNotifications(symbol, orderType, volume, request.price, sl, tp);
 
       // Mettre à jour l'affichage des niveaux de SL si nécessaire
       UpdateSLDisplay(StopLossType == SL_Suiveur, InpSeuilDeclenchement, trailingSL, sl);
