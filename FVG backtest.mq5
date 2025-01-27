@@ -48,8 +48,8 @@ CPositionInfo position;
 
 //--- Paramètres d'entrée
 input string  magic_settings          = "=== Gestion du Magic Number ===";
-input bool    UseMagicNumber          = true;             // False = Manuel + Tous magic
-input int     MagicNumber             = 123456;           // Magic Number
+input bool    UseMagicNumber          = true;            // False = Manuel + Tous magic
+input int     MagicNumber             = 123456;          // Magic Number
 
 input string  display_settings        = "=== Paramètres d'affichage ===";
 input bool    DisplayTable            = true; // Afficher le tableau d'informations
@@ -59,25 +59,27 @@ input color   TableFondColor          = clrYellow;       // Couleur de fond du t
 
 input string  martingale_settings     = "=== Paramètres des lots et martingale ===";
 enum LotType {LotFixe, Martingale};
-input LotType LotSizeType             = LotFixe;        // Type de gestion du volume
+input LotType LotSizeType             = LotFixe;         // Type de gestion du volume
 input double  FixedLotSize            = 0.01;            // Taille de lot fixe
-input double  MartingaleStartLot      = 0.01;           // Lot de départ pour la martingale
-input double  MartingaleMultiplier    = 2.0;            // Multiplicateur de la martingale
+input double  MartingaleStartLot      = 0.01;            // Lot de départ pour la martingale
+input double  MartingaleMultiplier    = 2.0;             // Multiplicateur de la martingale
 
 input string  spreadslippage          = "=== Spread et slippage ===";
-input bool    UseMaxSpreadFilter      = false;            // Utiliser le filtre de spread maximum
+input bool    UseMaxSpreadFilter      = false;           // Utiliser le filtre de spread maximum
 input long    MaxSpreadPoints         = 20;              // Spread maximum autorisé en points
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
 
 input string trend_settings           = "=== Méthode de détermination de la tendance ===";
-input bool DisplayOnChart             = true; // Afficher les indicateurs de tendance sur le graphique
-input bool UseTrendDetection          = true; // activer ou désactiver la détection de tendance
+input bool DisplayOnChart             = true;            // Afficher les indicateurs de tendance sur le graphique
+input bool UseTrendDetection          = true;            // activer ou désactiver la détection de tendance
 enum TrendMethod {Ichimoku, MA};
-input TrendMethod TrendMethodChoice   = Ichimoku; // Choix de la méthode de tendance
-input ENUM_TIMEFRAMES TrendTimeframe  = PERIOD_D1; // Unité de temps pour la tendance
-input int TrendMA_Period              = 200; // Période de la MM pour la tendance
-input color TendanceH                   = clrBlue;
-input color TendanceB                   = clrYellow;
+input TrendMethod TrendMethodChoice   = Ichimoku;        // Choix de la méthode de tendance
+input ENUM_TIMEFRAMES TrendTimeframe  = PERIOD_D1;       // Unité de temps pour la tendance
+input int     Bougieichimokuaanalyser = 1000;            // Nombre de bougies à utiliser 1000 minimum
+input int TrendMA_Period              = 200;             // Période de la MM pour la tendance
+input int   BougieTendanalyser        = 1000;            // Nombre de bougies à utiliser 1000 minimum
+input color TendanceH                 = clrBlue;
+input color TendanceB                 = clrYellow;
 
 input string  strategy_settings       = "=== Stratégie de trading ===";
 enum StrategyType {MA_Crossover, RSI_OSOB, FVG_Strategy};
@@ -89,6 +91,8 @@ input int     MA_Period1              = 50;              // Période de la premi
 input int     MA_Period2              = 200;             // Période de la deuxième MM
 input ENUM_MA_METHOD MA_Method        = MODE_SMA;        // Méthode de calcul des MM
 input ENUM_APPLIED_PRICE MA_Price     = PRICE_CLOSE;     // Prix appliqué pour les MM
+input color   couleurdoubleMM         = clrYellow;       // Couleur des deux MM
+input int     BougieMMaanalyser       = 1000;            // Nombre de bougies à utiliser 1000 minimum
 
 //--- Paramètres pour la stratégie RSI
 input string  rsi_settings            = "--- Paramètres RSI ---";
@@ -98,13 +102,20 @@ input int     RSI_Period              = 14;              // Période du RSI
 input string  fvg_settings            = "--- Paramètres FVG ---";
 input int     FVG_CandleLength        = 5;               // Longueur du rectangle en bougies
 input double  FVG_MinAmplitudePoints  = 50;              // Amplitude minimale du FVG en points
+input color   RectangleFVG            = clrRed;          // Couleur du rectangle FVG
+input string LabelBullish           = "FVG BISI";                 // Texte pour les FVG haussiers
+input string LabelBearish           = "FVG SIBI";                 // Texte pour les FVG baissiers
+input color  LabelColor             = clrWhite;                   // Couleur du texte des labels
+input color  FVGColorBullish        = clrGreen;                   // Couleur des FVG haussiers
+input color  FVGColorBearish        = clrRed;                     // Couleur des FVG baissiers
 enum FVG_Action {Breakout, Rebound};
 input FVG_Action FVG_TradeAction      = Breakout;        // Action à entreprendre (Breakout ou Rebond)
+input int     BougieFVGaanalyser       = 1000;            // Nombre de bougies à utiliser 1000 minimum
 
 input string  symbol_settings         = "=== Symboles à trader ===";
-input bool    TradeAllForexPairs      = false;            // Trader toutes les paires Forex
+input bool    TradeAllForexPairs      = false;           // Trader toutes les paires Forex
 input bool    TradeAllIndices         = false;           // Trader tous les indices
-input string  CustomSymbols           = "";             // Liste personnalisée de symboles, séparés par des virgules
+input string  CustomSymbols           = "";              // Liste personnalisée de symboles, séparés par des virgules
 
 input string  news_settings           = "=== Gestion des actualités ===";
 input bool    UseNewsFilter           = true;            // Utiliser le filtre des actualités
@@ -118,7 +129,7 @@ input StopType StopLossType           = SL_Classique;    // Type de Stop Loss
 
 input string  sl_classique_settings   = "--- Paramètres SL Classique ---";
 input double  StopLossCurrency        = 1.0;             // Stop Loss en devise (0 pour aucun SL)
-input double  TakeProfitCurrency      = 10.0;            // Take Profit en devise (0 pour aucun TP)
+input double  TakeProfitCurrency      = 1.0;            // Take Profit en devise (0 pour aucun TP)
 
 input string  sl_suiveur_settings     = "=== Paramètres du SL suiveur ===";
 input string  reglageslsuiveur        = "--- réglage SLsuiveur ---";
@@ -167,6 +178,17 @@ enum CrossSignal { Achat, Vente, Aucun };
 //--- Stockage indicateur de tendance
 int currentTrendMethod = -1; // Stocke l'indicateur actuellement affiché (-1 = aucun au départ)
 bool isIndicatorLoaded = false; // Indique si l'indicateur est déjà chargé
+
+// Initialisation de la période précédente
+int previous_RSI_Period = RSI_Period;
+// Variable globale pour stocker la dernière valeur utilisée et détecter les changements
+int lastBougieMMaanalyserEffective = 0;
+// Variable globale pour stocker la dernière valeur utilisée et détecter les changements
+int lastBougieTendanalyserEffective = -1;
+// Variable globale pour stocker la dernière valeur utilisée et détecter les changements
+int lastBougieIchimokuAnalyserEffective = -1;
+// Variable globale pour stocker la dernière valeur utilisée et détecter les changements
+int lastBougieFVGaanalyserEffective = -1;
 
 //+------------------------------------------------------------------+
 //| Fonction pour cacher les indicateurs tendance                    |
@@ -273,19 +295,48 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   // Mettre à jour les positions existantes (gestion des stops, etc.)
+   UpdateExistingPositions();
+   // Suppression indicateur selon strategie de signal
    switch(Strategy) {
       case MA_Crossover:
-         DisplayMAsignal();
+         if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0) 
+         { // Si une sous-fenêtre existe
+            DeleteSubWindowIfExists(); // Supprime la sous-fenêtre
+         }
+         SupprimerObjetsAutresStrategies(MA_Crossover);
+         DisplayMAsignal(); // Affiche la MA
          break;
       
       case RSI_OSOB:
-         DisplayRSIInSubWindow();
+         if(RSI_Period != previous_RSI_Period)
+     {
+      // Supprimer la sous-fenêtre existante si elle existe
+      DeleteSubWindowIfExists();
+      // Afficher le RSI dans une nouvelle sous-fenêtre
+      DisplayRSIInSubWindow();
+      // Mettre à jour la période précédente
+      previous_RSI_Period = RSI_Period;
+     }
+   else
+     {
+      // Afficher simplement le RSI dans la sous-fenêtre existante
+      SupprimerObjetsAutresStrategies(RSI_OSOB);
+      DisplayRSIInSubWindow();
+     }
+
          break;
       
       case FVG_Strategy:
-         DisplayFVGsignal();
+         SupprimerObjetsAutresStrategies(FVG_Strategy);
+         if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0) 
+         { // Si une sous-fenêtre existe
+            DeleteSubWindowIfExists(); // Supprime la sous-fenêtre
+         }
+         DisplayFVGsignal(); // Affiche le FVG
          break;
    }
+
    
    static int localcurrentTrendMethod = -1;  // ou toute autre valeur
 
@@ -339,9 +390,6 @@ void OnTick()
       isNewMinute = false;
    }
 
-   // Mettre à jour les positions existantes (gestion des stops, etc.)
-   UpdateExistingPositions();
-
    // Si ce n'est pas une nouvelle minute, ne pas vérifier les signaux
    if (!isNewMinute)
    {
@@ -357,6 +405,7 @@ void OnTick()
 
    // Vérifier les signaux et ouvrir des positions si nécessaire
    CheckForNewSignals();
+
 }
 
 //+------------------------------------------------------------------+
@@ -674,7 +723,7 @@ void CheckForNewSignals()
    {
       // Obtenir la tendance
       trend = GetMarketTrend(Symbol(), 0);
-      Print("Tendance détectée : ", EnumToString(trend));
+      
    }
    else
    {
@@ -1020,11 +1069,117 @@ CrossSignal CheckRSISignal(string symbol, int index = 0)
 }
 
 //+------------------------------------------------------------------+
-//| Fonction pour afficher les Moyennes Mobiles de signal            |
+//| Fonction pour calculer et afficher les MM de signal              |
 //+------------------------------------------------------------------+
 void DisplayMAsignal()
 {
-} 
+    int BougieMMaanalyserEffective = BougieMMaanalyser;  // Copie de la valeur d'entrée
+
+    string symbol = Symbol();
+    ENUM_TIMEFRAMES timeframe = PERIOD_CURRENT;
+
+    // Obtenir le nombre total de barres disponibles dans l'historique
+    int totalBars = Bars(symbol, timeframe);
+
+    // Vérification des conditions pour ajuster la valeur des bougies à analyser
+    if (BougieMMaanalyserEffective < 1000)
+    {
+       BougieMMaanalyserEffective = 1000;
+    }
+    else if (BougieMMaanalyserEffective > totalBars)
+    {
+        BougieMMaanalyserEffective = totalBars;
+    }
+
+    // Détection du changement de valeur
+    if (BougieMMaanalyserEffective != lastBougieMMaanalyserEffective)
+    {
+        // Supprimer les objets existants avant de recalculer les MM
+        SupprimerObjetsMM();
+
+        // Mettre à jour la valeur mémorisée
+        lastBougieMMaanalyserEffective = BougieMMaanalyserEffective;
+    }
+
+
+    // --- Obtenir les données des moyennes mobiles ---
+    double ma1[], ma2[];
+    ArraySetAsSeries(ma1, true);
+    ArraySetAsSeries(ma2, true);
+
+    int ma1Handle = iMA(symbol, timeframe, MA_Period1, 0, MA_Method, MA_Price);
+    int ma2Handle = iMA(symbol, timeframe, MA_Period2, 0, MA_Method, MA_Price);
+
+    if (CopyBuffer(ma1Handle, 0, 0, BougieMMaanalyserEffective, ma1) <= 0)
+    {
+       return;
+    }
+
+    if (CopyBuffer(ma2Handle, 0, 0, BougieMMaanalyserEffective, ma2) <= 0)
+    {
+        return;
+    }
+
+    // --- Affichage des moyennes mobiles sur le graphique ---
+    for (int i = 0; i < BougieMMaanalyserEffective - 1; i++)
+    {
+        string objName1 = "MA1_" + IntegerToString(i);
+
+        if (ma1[i] != EMPTY_VALUE)
+        {
+            if (ObjectFind(0, objName1) < 0)
+            {
+                ObjectCreate(0, objName1, OBJ_TREND, 0, iTime(symbol, timeframe, i), ma1[i], iTime(symbol, timeframe, i + 1), ma1[i + 1]);
+            }
+            else
+            {
+                ObjectMove(0, objName1, 0, iTime(symbol, timeframe, i), ma1[i]);
+                ObjectMove(0, objName1, 1, iTime(symbol, timeframe, i + 1), ma1[i + 1]);
+            }
+
+            ObjectSetInteger(0, objName1, OBJPROP_COLOR, couleurdoubleMM);
+            ObjectSetInteger(0, objName1, OBJPROP_WIDTH, 2);
+            ObjectSetInteger(0, objName1, OBJPROP_HIDDEN, !DisplayOnChart);
+        }
+    }
+
+    for (int i = 0; i < BougieMMaanalyserEffective - 1; i++)
+    {
+        string objName2 = "MA2_" + IntegerToString(i);
+
+        if (ma2[i] != EMPTY_VALUE)
+        {
+            if (ObjectFind(0, objName2) < 0)
+            {
+                ObjectCreate(0, objName2, OBJ_TREND, 0, iTime(symbol, timeframe, i), ma2[i], iTime(symbol, timeframe, i + 1), ma2[i + 1]);
+            }
+            else
+            {
+                ObjectMove(0, objName2, 0, iTime(symbol, timeframe, i), ma2[i]);
+                ObjectMove(0, objName2, 1, iTime(symbol, timeframe, i + 1), ma2[i + 1]);
+            }
+
+            ObjectSetInteger(0, objName2, OBJPROP_COLOR, couleurdoubleMM);
+            ObjectSetInteger(0, objName2, OBJPROP_WIDTH, 2);
+            ObjectSetInteger(0, objName2, OBJPROP_HIDDEN, !DisplayOnChart);
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour supprimer les objets des MM existants              |
+//+------------------------------------------------------------------+
+void SupprimerObjetsMM()
+{
+    for (int i = 0; i < lastBougieMMaanalyserEffective - 1; i++)
+    {
+        string objName1 = "MA1_" + IntegerToString(i);
+        string objName2 = "MA2_" + IntegerToString(i);
+
+        ObjectDelete(0, objName1);
+        ObjectDelete(0, objName2);
+    }
+}
 
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier le signal de croisement des MM            |
@@ -1045,11 +1200,11 @@ CrossSignal CheckMACrossover(string symbol, int index = 0)
    }
 
    // Vérifier le croisement des moyennes mobiles
-   if (ma1[0] > ma2[0] && ma1[1] <= ma2[1])
+   if (ma1[0] < ma2[0] && ma1[1] <= ma2[1])
    {
       return Achat;
    }
-   else if (ma1[0] < ma2[0] && ma1[1] >= ma2[1])
+   else if (ma1[0] > ma2[0] && ma1[1] >= ma2[1])
    {
       return Vente;
    }
@@ -1062,7 +1217,150 @@ CrossSignal CheckMACrossover(string symbol, int index = 0)
 //+------------------------------------------------------------------+
 void DisplayFVGsignal()
 {
-} 
+    // Récupérer le symbole et timeframe courants
+    string symbol = Symbol();
+    ENUM_TIMEFRAMES timeframe = PERIOD_CURRENT;
+
+    // Obtenir le nombre total de barres disponibles
+    int totalBars = Bars(symbol, timeframe);
+
+    // Calculer la valeur effective (bornée entre 1000 et totalBars)
+    int bougieFVGaanalyserEffective = BougieFVGaanalyser;
+    if (bougieFVGaanalyserEffective < 1000)
+        bougieFVGaanalyserEffective = 1000;
+    else if (bougieFVGaanalyserEffective > totalBars)
+        bougieFVGaanalyserEffective = totalBars;
+
+    // Si la valeur a changé, on supprime les anciens objets FVG
+    if (bougieFVGaanalyserEffective != lastBougieFVGaanalyserEffective)
+    {
+        SupprimerObjetsFVG();
+        lastBougieFVGaanalyserEffective = bougieFVGaanalyserEffective;
+    }
+
+    // Parcourir les bougies pour détecter les FVG
+    for (int i = 2; i < bougieFVGaanalyserEffective; i++)
+    {
+        // Récupérer les données des trois bougies nécessaires.
+        double high1 = iHigh(symbol, timeframe, i + 2);
+        double low1  = iLow(symbol, timeframe, i + 2);
+        double high2 = iHigh(symbol, timeframe, i + 1);
+        double low2  = iLow(symbol, timeframe, i + 1);
+        double high3 = iHigh(symbol, timeframe, i);
+        double low3  = iLow(symbol, timeframe, i);
+
+        // Calcul de l'amplitude en points
+        double fvgAmplitudeBullish = MathAbs(low3 - high1) / _Point;
+        double fvgAmplitudeBearish = MathAbs(high3 - low1) / _Point;
+
+        string fvgName;
+        double levelHigh, levelLow;
+        color zoneColor;
+        string labelText;
+
+        // Vérifier les conditions pour un FVG haussier
+        if (low3 > high1 && fvgAmplitudeBullish >= FVG_MinAmplitudePoints * (Symbol() == "XAUUSD" ? 0.01 : 1))
+        {
+            // Paramètres pour FVG haussier
+            fvgName = "FVG_Bullish_" + IntegerToString(i);
+            levelHigh = high1;
+            levelLow = low3;
+            zoneColor = FVGColorBullish;
+            labelText = LabelBullish;
+
+        }
+
+        // Vérifier les conditions pour un FVG baissier
+        else if (high3 < low1 && fvgAmplitudeBearish >= FVG_MinAmplitudePoints * (Symbol() == "XAUUSD" ? 0.01 : 1))
+        {
+            // Paramètres pour FVG baissier
+            fvgName = "FVG_Bearish_" + IntegerToString(i);
+            levelHigh = low1;
+            levelLow = high3;
+            zoneColor = FVGColorBearish;
+            labelText = LabelBearish;
+        }
+
+        else
+        {
+            continue; // Pas de FVG détecté, passer à la bougie suivante
+        }
+
+        // Dessiner la zone FVG (Intégration de DrawFVGZone ici)
+        // -------------------------------------------------------
+        // Vérifier si l'objet rectangle existe déjà
+        if (ObjectFind(0, fvgName) == -1)
+        {
+            // Calculer l'index de la bougie de fin (BOUGIES APRES LE FVG)
+            int endBarIndex = i - FVG_CandleLength;
+
+            // Vérifier si l'index de fin dépasse le nombre total de bougies
+            if (endBarIndex < 0) //Correction ici
+            {
+                endBarIndex = 0; // Ajuster l'index de fin
+            }
+
+            // Récupérer les temps de début et de fin à partir des index
+            datetime startTime = iTime(Symbol(), Period(), i);
+            datetime endTime = iTime(Symbol(), Period(), endBarIndex);
+
+            // Créer un rectangle
+            if (!ObjectCreate(0, fvgName, OBJ_RECTANGLE, 0, endTime, levelHigh, startTime, levelLow)) //Correction ici
+            {
+                Print("Erreur lors de la création de l'objet ", fvgName, " : ", GetLastError());
+                 continue;
+            }
+
+            // Définir les propriétés du rectangle
+            ObjectSetInteger(0, fvgName, OBJPROP_COLOR, zoneColor);            // Couleur du rectangle
+            ObjectSetInteger(0, fvgName, OBJPROP_STYLE, STYLE_SOLID);          // Style de la bordure
+            ObjectSetInteger(0, fvgName, OBJPROP_WIDTH, 1);                    // Épaisseur de la bordure
+            ObjectSetInteger(0, fvgName, OBJPROP_BACK, true);                  // Envoyer à l'arrière-plan
+            ObjectSetInteger(0, fvgName, OBJPROP_FILL, true);
+
+            // Ajouter une étiquette textuelle au centre du rectangle
+            string labelName = "Label_" + fvgName;
+            if (ObjectFind(0, labelName) == -1)
+            {
+                if (!ObjectCreate(0, labelName, OBJ_TEXT, 0, startTime, levelHigh))
+                {
+                    Print("Erreur lors de la création de l'objet texte ", labelName, " : ", GetLastError());
+                    continue;
+                }
+
+                // Calculer la position du label (centré dans le rectangle)
+                double midPrice = (levelHigh + levelLow) / 2.0;
+                datetime midTime = iTime(Symbol(), Period(), (i + endBarIndex) / 2);
+
+                // Définir les propriétés du label
+                ObjectSetString(0, labelName, OBJPROP_TEXT, labelText);
+                ObjectSetInteger(0, labelName, OBJPROP_COLOR, LabelColor);
+                ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 10);
+                ObjectSetString(0, labelName, OBJPROP_FONT, "Arial");
+                ObjectSetInteger(0, labelName, OBJPROP_ANCHOR, ANCHOR_CENTER);
+                ObjectMove(0, labelName, 0, midTime, midPrice);
+                ObjectSetInteger(0, labelName, OBJPROP_BACK, false);
+            }
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour supprimer les objets FVG                          |
+//+------------------------------------------------------------------+
+void SupprimerObjetsFVG()
+{
+    Print("Suppression des objets FVG existants...");
+    for (int i = ObjectsTotal(0) - 1; i >= 0; i--)
+    {
+        string objName = ObjectName(0, i);
+        if (StringFind(objName, "FVG_") == 0)
+        {
+            ObjectDelete(0, objName);
+        }
+    }
+    Print("Tous les objets FVG ont été supprimés.");
+}
 
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier le signal FVG                             |
@@ -1236,6 +1534,7 @@ bool IsPositionOpen(string symbol)
 //+------------------------------------------------------------------+
 void UpdateExistingPositions()
 {
+
    for (int i = 0; i < PositionsTotal(); i++)
    {
       ulong ticket = PositionGetTicket(i);
@@ -1251,6 +1550,7 @@ void UpdateExistingPositions()
          continue;
       }
 
+      // Lire les informations de la position
       string symbol = PositionGetString(POSITION_SYMBOL);
       ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
       double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -1258,29 +1558,133 @@ void UpdateExistingPositions()
       double sl = PositionGetDouble(POSITION_SL);
       double tp = PositionGetDouble(POSITION_TP);
       double lotSize = PositionGetDouble(POSITION_VOLUME);
+      long positionMagicNumber = PositionGetInteger(POSITION_MAGIC);
 
-      // Vérifier si le Magic Number doit être utilisé
-      if (UseMagicNumber && position.Magic() != MagicNumber)
+      switch (StopLossType)
       {
-         // Ignorer les positions avec un Magic Number différent
-         continue;
-      }
+         case SL_Classique:
+            if (UseMagicNumber == true && positionMagicNumber == MagicNumber)
+            {
+                // Logique pour le Stop Loss classique avec le même Magic Number
+                double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+                int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+                double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
 
-      // Mettre à jour le Stop Loss suiveur si activé
-      if (StopLossType == SL_Suiveur)
-      {
-         double seuilDeclenchementPercentage = 0.0, respirationPercentage = 0.0, slSuiveurPercentage = 0.0;
-         double seuilDeclenchementPoints = 0.0, respirationPoints = 0.0, slSuiveurPoints = 0.0;
-         UpdateTrailingStop(symbol, ticket, type, openPrice, currentPrice, sl,
-                            seuilDeclenchementPercentage, respirationPercentage, slSuiveurPercentage,
-                            seuilDeclenchementPoints, respirationPoints, slSuiveurPoints);
+                // Calculer les niveaux de SL et TP en pips
+                double slPips = NormalizeDouble(StopLossCurrency / (lotSize * pointValue), digits);
+                double tpPips = NormalizeDouble(TakeProfitCurrency / (lotSize * pointValue), digits);
 
-         Print("Seuil de déclenchement en pourcentage de l'équité: ", seuilDeclenchementPercentage, "%");
-         Print("Respiration en pourcentage de l'équité: ", respirationPercentage, "%");
-         Print("SL suiveur en pourcentage de l'équité: ", slSuiveurPercentage, "%");
-         Print("Seuil de déclenchement en points: ", seuilDeclenchementPoints);
-         Print("Respiration en points: ", respirationPoints);
-         Print("SL suiveur en points: ", slSuiveurPoints);
+                // Calculer les niveaux de SL et TP en prix
+                double slPrice = 0.0;
+                double tpPrice = 0.0;
+
+                if (type == POSITION_TYPE_BUY)
+                {
+                    slPrice = NormalizeDouble(openPrice - slPips * point, digits);
+                    tpPrice = NormalizeDouble(openPrice + tpPips * point, digits);
+                }
+                else if (type == POSITION_TYPE_SELL)
+                {
+                    slPrice = NormalizeDouble(openPrice + slPips * point, digits);
+                    tpPrice = NormalizeDouble(openPrice - tpPips * point, digits);
+                }
+                  double currentSl = PositionGetDouble(POSITION_SL);
+                double currentTp = PositionGetDouble(POSITION_TP);
+                 // Modifier la position si nécessaire
+                if (slPrice != currentSl || tpPrice != currentTp)
+                {
+                     bool modified = trade.PositionModify(ticket, slPrice, tpPrice);
+                     if(modified){
+                        Print("Position modifiée: SL=", slPrice, ", TP=", tpPrice, " (ticket=", ticket,")");
+                     } else{
+                          Print("Erreur modification de la position : ", trade.ResultRetcodeDescription());
+                    }
+                }
+                else
+                {
+                        //Pas de changement
+                        //Print("Position inchangée: SL=", currentSl, ", TP=", currentTp, " (ticket=", ticket,")");
+                }
+            }
+            else if (!UseMagicNumber)
+            {
+               // Logique pour le Stop Loss classique sans restriction de Magic Number
+                double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+                int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+                double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+
+                // Calculer les niveaux de SL et TP en pips
+                double slPips = NormalizeDouble(StopLossCurrency / (lotSize * pointValue), digits);
+                double tpPips = NormalizeDouble(TakeProfitCurrency / (lotSize * pointValue), digits);
+
+                // Calculer les niveaux de SL et TP en prix
+                double slPrice = 0.0;
+                double tpPrice = 0.0;
+
+                if (type == POSITION_TYPE_BUY)
+                {
+                    slPrice = NormalizeDouble(openPrice - slPips * point, digits);
+                    tpPrice = NormalizeDouble(openPrice + tpPips * point, digits);
+                }
+                else if (type == POSITION_TYPE_SELL)
+                {
+                    slPrice = NormalizeDouble(openPrice + slPips * point, digits);
+                    tpPrice = NormalizeDouble(openPrice - tpPips * point, digits);
+                }
+                double currentSl = PositionGetDouble(POSITION_SL);
+                double currentTp = PositionGetDouble(POSITION_TP);
+                // Modifier la position si nécessaire
+                if (slPrice != currentSl || tpPrice != currentTp)
+                {
+                     bool modified = trade.PositionModify(ticket, slPrice, tpPrice);
+                     if(modified){
+                        Print("Position modifiée: SL=", slPrice, ", TP=", tpPrice, " (ticket=", ticket,")");
+                     } else{
+                          Print("Erreur modification de la position : ", trade.ResultRetcodeDescription());
+                    }
+                }
+                else
+                {
+                        //Pas de changement
+                        //Print("Position inchangée: SL=", currentSl, ", TP=", currentTp, " (ticket=", ticket,")");
+                }
+            }
+            break;
+
+
+         case SL_Suiveur:
+            if (UseMagicNumber && positionMagicNumber == MagicNumber)
+            {
+               double seuilDeclenchementPercentage = 0.0, respirationPercentage = 0.0, slSuiveurPercentage = 0.0;
+               double seuilDeclenchementPoints = 0.0, respirationPoints = 0.0, slSuiveurPoints = 0.0;
+               UpdateTrailingStop(symbol, ticket, type, openPrice, currentPrice, sl,
+                                  seuilDeclenchementPercentage, respirationPercentage, slSuiveurPercentage,
+                                  seuilDeclenchementPoints, respirationPoints, slSuiveurPoints);
+
+            }
+            else if (!UseMagicNumber)
+            {
+               // Logique pour le Stop Loss suiveur sans restriction de Magic Number
+               // Insérer ici la logique générale pour ce cas
+            }
+            break;
+
+         case GridTrading:
+            if (UseMagicNumber && positionMagicNumber == MagicNumber)
+            {
+               // Logique pour le Grid Trading avec le même Magic Number
+               // Insérer ici la logique spécifique pour ce cas
+            }
+            else if (!UseMagicNumber)
+            {
+               // Logique pour le Grid Trading sans restriction de Magic Number
+               // Insérer ici la logique générale pour ce cas
+            }
+            break;
+
+         default:
+            Print("Type de Stop Loss non reconnu: ", StopLossType);
+            break;
       }
 
       // Vérifier si le Take Profit ou le Stop Loss a été atteint
@@ -1288,34 +1692,7 @@ void UpdateExistingPositions()
    }
 }
 
-//+------------------------------------------------------------------+
-//| Fonction de modification de position                              |
-//+------------------------------------------------------------------+
-bool ModifyPosition(ulong ticket, double sl, double tp)
-{
-   if (!position.SelectByTicket(ticket))
-   {
-      Print("Erreur de sélection du ticket : ", ticket);
-      return false;
-   }
-   
-   // Vérifier si le Magic Number doit être utilisé
-   if (UseMagicNumber && position.Magic() != MagicNumber)
-   {
-      Print("Magic number invalide pour le ticket : ", ticket);
-      return false;
-   }
-   
-   // Normalisation des niveaux SL et TP
-   sl = NormalizeDouble(sl, _Digits);
-   tp = NormalizeDouble(tp, _Digits);
-   
-   // Vérification si la modification est nécessaire
-   if (position.StopLoss() == sl && position.TakeProfit() == tp)
-      return true;
-      
-   return trade.PositionModify(ticket, sl, tp);
-}
+
 
 //+------------------------------------------------------------------+
 //| Fonction de fermeture de position                                 |
@@ -1359,52 +1736,6 @@ void CloseAllPositions(string symbol = "")
       {
          Print("Erreur de fermeture de la position : ", GetLastError());
       }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction de gestion du SL classique                               |
-//+------------------------------------------------------------------+
-void ManageClassicSL(string symbol)
-{
-   if (!position.Select(symbol))
-      return;
-
-   // Vérifier si le Magic Number doit être utilisé
-   if (UseMagicNumber && position.Magic() != MagicNumber)
-      return;
-
-   double lotSize = position.Volume(); // Utiliser le volume de la position existante
-   double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
-   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-
-   // Calculer les niveaux de SL et TP en pips
-   double slPips = NormalizeDouble(StopLossCurrency / (lotSize * pointValue), digits);
-   double tpPips = NormalizeDouble(TakeProfitCurrency / (lotSize * pointValue), digits);
-
-   // Récupérer le prix d'ouverture de la position
-   double openPrice = position.PriceOpen();
-
-   // Calculer les niveaux de SL et TP en prix
-   double slPrice = 0.0;
-   double tpPrice = 0.0;
-
-   if (position.PositionType() == POSITION_TYPE_BUY)
-   {
-      slPrice = NormalizeDouble(openPrice - slPips * point, digits);
-      tpPrice = NormalizeDouble(openPrice + tpPips * point, digits);
-   }
-   else if (position.PositionType() == POSITION_TYPE_SELL)
-   {
-      slPrice = NormalizeDouble(openPrice + slPips * point, digits);
-      tpPrice = NormalizeDouble(openPrice - tpPips * point, digits);
-   }
-
-   // Modifier la position si nécessaire
-   if (!ModifyPosition(position.Ticket(), slPrice, tpPrice))
-   {
-      Print("Erreur lors de la modification du SL classique pour ", symbol, ": ", GetLastError());
    }
 }
 
@@ -1482,151 +1813,314 @@ color  previousTrendColor = clrNONE; // Initialiser à "aucune couleur" au déma
 
 void DisplayIchimokuOnChart()
 {
-   if (!DisplayOnChart) return; // Ne rien faire si l'affichage est désactivé
-
-   string symbol = Symbol();
-   ENUM_TIMEFRAMES timeframe = TrendTimeframe;
-
-   int totalBars = Bars(symbol, timeframe);
-
-   double ichimokuTenkan[];
-   double ichimokuKijun[];
-   double ichimokuSenkouSpanA[];
-   double ichimokuSenkouSpanB[];
-
-   ArraySetAsSeries(ichimokuTenkan, true);
-   ArraySetAsSeries(ichimokuKijun, true);
-   ArraySetAsSeries(ichimokuSenkouSpanA, true);
-   ArraySetAsSeries(ichimokuSenkouSpanB, true);
-
-   int ichimokuHandle = iIchimoku(symbol, timeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
-   if(ichimokuHandle == INVALID_HANDLE)
-   {
-      Print("Erreur lors de la création du handle Ichimoku : ", GetLastError());
-      return;
-   }
-
-   CopyBuffer(ichimokuHandle, 0, 0, totalBars, ichimokuTenkan);
-   CopyBuffer(ichimokuHandle, 1, 0, totalBars, ichimokuKijun);
-   CopyBuffer(ichimokuHandle, 2, 0, totalBars, ichimokuSenkouSpanA);
-   CopyBuffer(ichimokuHandle, 3, 0, totalBars, ichimokuSenkouSpanB);
-
-   // Supprimer les anciens objets Tenkan et Kijun avant de redessiner
-   ObjectsDeleteAll(0, "Tenkan_");
-   ObjectsDeleteAll(0, "Kijun_");
-
-   // Boucle pour dessiner les lignes et le nuage
-   for(int i = 0; i < totalBars - 1; i++) // Aller jusqu'à totalBars - 1 pour avoir un point suivant
-   {
-      // Tenkan-sen (segments de ligne)
-      string tenkanName = "Tenkan_" + IntegerToString(i);
-      ObjectCreate(0, tenkanName, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuTenkan[i], iTime(symbol, timeframe, i+1), ichimokuTenkan[i+1]);
-      ObjectSetInteger(0, tenkanName, OBJPROP_COLOR, previousTrendColor); // Utilisation de la variable existante pour Tenkan
-      ObjectSetInteger(0, tenkanName, OBJPROP_STYLE, STYLE_SOLID); // Style de ligne continue
-      ObjectSetInteger(0, tenkanName, OBJPROP_WIDTH, 1);       // Épaisseur de la ligne
-
-      // Kijun-sen (segments de ligne)
-      string kijunName = "Kijun_" + IntegerToString(i);
-      ObjectCreate(0, kijunName, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuKijun[i], iTime(symbol, timeframe, i+1), ichimokuKijun[i+1]);
-      ObjectSetInteger(0, kijunName, OBJPROP_COLOR, previousTrendColor); // Utilisation de la variable existante pour Kijun
-      ObjectSetInteger(0, kijunName, OBJPROP_STYLE, STYLE_SOLID); // Style de ligne continue
-      ObjectSetInteger(0, kijunName, OBJPROP_WIDTH, 1);       // Épaisseur de la ligne
-
-      // Senkou Span A et B (Nuage) - Dessiné 26 périodes en avance
-      if(i >= Ichimoku_Kijun) { // Vérifier si suffisamment de données pour le nuage
-         string nuageName = "Nuage_" + IntegerToString(i);
-         color nuageColor;
-         if (ichimokuSenkouSpanA[i - Ichimoku_Kijun] > ichimokuSenkouSpanB[i - Ichimoku_Kijun]) {
-             nuageColor = TendanceH; // Senkou A au-dessus de Senkou B
-         } else {
-             nuageColor = TendanceB; // Senkou A en-dessous de Senkou B
-         }
-
-         if(ObjectFind(0, nuageName) == -1)
-            ObjectCreate(0, nuageName, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i-Ichimoku_Kijun), ichimokuSenkouSpanA[i-Ichimoku_Kijun], iTime(symbol, timeframe, i - Ichimoku_Kijun + 1), ichimokuSenkouSpanB[i-Ichimoku_Kijun]);
-
-         ObjectSetInteger(0, nuageName, OBJPROP_COLOR,  nuageColor);
-         ObjectSetInteger(0, nuageName, OBJPROP_BACK, true);
-         ObjectMove(0, nuageName, 0, iTime(symbol, timeframe, i-Ichimoku_Kijun), MathMin(ichimokuSenkouSpanA[i-Ichimoku_Kijun], ichimokuSenkouSpanB[i-Ichimoku_Kijun]));
-         ObjectMove(0, nuageName, 1, iTime(symbol, timeframe, i - Ichimoku_Kijun + 1), MathMax(ichimokuSenkouSpanA[i-Ichimoku_Kijun], ichimokuSenkouSpanB[i-Ichimoku_Kijun]));
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour afficher la Moyennes Mobiles de tendance           |
-//+------------------------------------------------------------------+
-void DisplayMAOnChart()
-{
-    if (!DisplayOnChart) return; // Ne rien faire si l'affichage est désactivé
+    if (!DisplayOnChart)
+        return; // Ne rien faire si l'affichage est désactivé
 
     string symbol = Symbol();
     ENUM_TIMEFRAMES timeframe = TrendTimeframe;
 
-    // --- Obtenir le nombre total de barres dans l'historique
+    // Obtenir le nombre total de barres dans l'historique
     int totalBars = Bars(symbol, timeframe);
 
-    // --- Obtenir les données de la MA
-    double maTrend[];
-    ArraySetAsSeries(maTrend, true);
-    int maTrendHandle = iMA(symbol, timeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE);
+    // Déterminer la valeur effective de bougies à analyser
+    int BougieIchimokuAnalyserEffective = Bougieichimokuaanalyser;
 
-    if (CopyBuffer(maTrendHandle, 0, 0, totalBars, maTrend) <= 0)
+    // Forcer un minimum de 1000
+    if (BougieIchimokuAnalyserEffective < 1000)
     {
-        Print("Erreur lors de la copie des données MA.");
+        BougieIchimokuAnalyserEffective = 1000;
+    }
+    // Ne pas dépasser le nombre réel de barres disponibles
+    else if (BougieIchimokuAnalyserEffective > totalBars)
+    {
+        BougieIchimokuAnalyserEffective = totalBars;
+    }
+
+    // Recalculer si la valeur a changé depuis la dernière fois
+    if (BougieIchimokuAnalyserEffective != lastBougieIchimokuAnalyserEffective)
+    {
+        // Supprimer les objets existants (Tenkan, Kijun, Nuage)
+        SupprimerObjetsIchimoku();
+
+        // Mettre à jour la valeur mémorisée
+        lastBougieIchimokuAnalyserEffective = BougieIchimokuAnalyserEffective;
+    }
+
+    // --- Tableaux pour les données Ichimoku ---
+    double ichimokuTenkan[];
+    double ichimokuKijun[];
+    double ichimokuSenkouSpanA[];
+    double ichimokuSenkouSpanB[];
+
+    ArraySetAsSeries(ichimokuTenkan, true);
+    ArraySetAsSeries(ichimokuKijun, true);
+    ArraySetAsSeries(ichimokuSenkouSpanA, true);
+    ArraySetAsSeries(ichimokuSenkouSpanB, true);
+
+    // --- Création du handle Ichimoku ---
+    int ichimokuHandle = iIchimoku(symbol, timeframe, Ichimoku_Tenkan, Ichimoku_Kijun, Ichimoku_Senkou);
+    if (ichimokuHandle == INVALID_HANDLE)
+    {
+        Print("Erreur lors de la création du handle Ichimoku : ", GetLastError());
         return;
     }
 
-    // --- Créer/Mettre à jour les objets OBJ_TREND
-    for (int i = 0; i < totalBars - 1; i++)
+    // --- Copie des données ---
+    // On copie uniquement le nombre de barres requis
+    if (CopyBuffer(ichimokuHandle, 0, 0, BougieIchimokuAnalyserEffective, ichimokuTenkan) <= 0 ||
+        CopyBuffer(ichimokuHandle, 1, 0, BougieIchimokuAnalyserEffective, ichimokuKijun) <= 0 ||
+        CopyBuffer(ichimokuHandle, 2, 0, BougieIchimokuAnalyserEffective, ichimokuSenkouSpanA) <= 0 ||
+        CopyBuffer(ichimokuHandle, 3, 0, BougieIchimokuAnalyserEffective, ichimokuSenkouSpanB) <= 0)
     {
-        string objName = "MA_Trend_" + IntegerToString(i); // Déclaration de objName ici
+        Print("Erreur lors de la copie des données Ichimoku.");
+        return;
+    }
 
-        if (maTrend[i] != EMPTY_VALUE)
+    // --- Boucle pour dessiner les lignes et le nuage ---
+    // On itère jusqu'à BougieIchimokuAnalyserEffective - 1
+    for (int i = 0; i < BougieIchimokuAnalyserEffective - 1; i++)
+    {
+        // Tenkan-sen (segments de ligne)
+        string tenkanName = "Tenkan_" + IntegerToString(i);
+        if (ichimokuTenkan[i] != EMPTY_VALUE && ichimokuTenkan[i + 1] != EMPTY_VALUE)
         {
-            // --- Création de l'objet si inexistant
+            if (ObjectFind(0, tenkanName) < 0)
+            {
+                ObjectCreate(0, tenkanName, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuTenkan[i], iTime(symbol, timeframe, i + 1), ichimokuTenkan[i + 1]);
+            }
+            else
+            {
+                ObjectMove(0, tenkanName, 0, iTime(symbol, timeframe, i), ichimokuTenkan[i]);
+                ObjectMove(0, tenkanName, 1, iTime(symbol, timeframe, i + 1), ichimokuTenkan[i + 1]);
+            }
+
+            ObjectSetInteger(0, tenkanName, OBJPROP_COLOR, previousTrendColor);
+            ObjectSetInteger(0, tenkanName, OBJPROP_STYLE, STYLE_SOLID);
+            ObjectSetInteger(0, tenkanName, OBJPROP_WIDTH, 1);
+        }
+        else
+        {
+            ObjectDelete(0, tenkanName); // Supprimer si pas de données
+        }
+
+        // Kijun-sen (segments de ligne)
+        string kijunName = "Kijun_" + IntegerToString(i);
+        if (ichimokuKijun[i] != EMPTY_VALUE && ichimokuKijun[i + 1] != EMPTY_VALUE)
+        {
+            if (ObjectFind(0, kijunName) < 0)
+            {
+                ObjectCreate(0, kijunName, OBJ_TREND, 0, iTime(symbol, timeframe, i), ichimokuKijun[i], iTime(symbol, timeframe, i + 1), ichimokuKijun[i + 1]);
+            }
+            else
+            {
+                ObjectMove(0, kijunName, 0, iTime(symbol, timeframe, i), ichimokuKijun[i]);
+                ObjectMove(0, kijunName, 1, iTime(symbol, timeframe, i + 1), ichimokuKijun[i + 1]);
+            }
+
+            ObjectSetInteger(0, kijunName, OBJPROP_COLOR, previousTrendColor);
+            ObjectSetInteger(0, kijunName, OBJPROP_STYLE, STYLE_SOLID);
+            ObjectSetInteger(0, kijunName, OBJPROP_WIDTH, 1);
+        }
+        else
+        {
+            ObjectDelete(0, kijunName); // Supprimer si pas de données
+        }
+
+        // Senkou Span A et B (Nuage) - On commence Ichimoku_Kijun en avance
+        if (i >= Ichimoku_Kijun && i - Ichimoku_Kijun < BougieIchimokuAnalyserEffective)
+        {
+            string nuageName = "Nuage_" + IntegerToString(i);
+            color nuageColor;
+
+            // Vérifier les croisements (Senkou A vs B)
+            if (ichimokuSenkouSpanA[i - Ichimoku_Kijun] > ichimokuSenkouSpanB[i - Ichimoku_Kijun])
+                nuageColor = TendanceH; // Senkou A au-dessus
+            else
+                nuageColor = TendanceB; // Senkou A en dessous
+
+            if (ObjectFind(0, nuageName) < 0)
+            {
+                ObjectCreate(0, nuageName, OBJ_RECTANGLE, 0, iTime(symbol, timeframe, i - Ichimoku_Kijun), ichimokuSenkouSpanA[i - Ichimoku_Kijun], iTime(symbol, timeframe, i - Ichimoku_Kijun + 1), ichimokuSenkouSpanB[i - Ichimoku_Kijun]);
+                ObjectSetInteger(0, nuageName, OBJPROP_COLOR, nuageColor);
+                ObjectSetInteger(0, nuageName, OBJPROP_BACK, true);
+            }
+
+            // Déplacer les points du rectangle
+            ObjectMove(0, nuageName, 0, iTime(symbol, timeframe, i - Ichimoku_Kijun), MathMin(ichimokuSenkouSpanA[i - Ichimoku_Kijun], ichimokuSenkouSpanB[i - Ichimoku_Kijun]));
+            ObjectMove(0, nuageName, 1, iTime(symbol, timeframe, i - Ichimoku_Kijun + 1), MathMax(ichimokuSenkouSpanA[i - Ichimoku_Kijun], ichimokuSenkouSpanB[i - Ichimoku_Kijun]));
+        }
+    }
+
+    // --- Nettoyage des objets "Nuage" au-delà de la limite ---
+    for (int j = ObjectsTotal(0) - 1; j >= 0; j--)
+    {
+        string objName = ObjectName(0, j);
+        if (StringFind(objName, "Nuage_") == 0)
+        {
+            // Extraire l'index de l'objet "Nuage"
+            int objIndex = (int)StringToInteger(StringSubstr(objName, 6));
+
+            // Supprimer si l'index est en dehors de la plage actuelle
+            if (objIndex >= BougieIchimokuAnalyserEffective)
+            {
+                ObjectDelete(0, objName);
+            }
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour supprimer les objets de l'Ichimoku                |
+//+------------------------------------------------------------------+
+void SupprimerObjetsIchimoku()
+{
+    for (int i = ObjectsTotal(0) - 1; i >= 0; i--)
+    {
+        string objName = ObjectName(0, i);
+        // Vérifier si le nom de l'objet commence par "Tenkan_", "Kijun_" ou "Nuage_"
+        if (StringFind(objName, "Tenkan_") == 0 || StringFind(objName, "Kijun_") == 0 || StringFind(objName, "Nuage_") == 0)
+        {
+            ObjectDelete(0, objName);
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour afficher la Moyenne Mobile de tendance             |
+//+------------------------------------------------------------------+
+void DisplayMAOnChart()
+{
+    // Ne rien faire si l'affichage est désactivé
+    if (!DisplayOnChart) 
+        return;
+
+    string symbol = Symbol();
+    ENUM_TIMEFRAMES timeframe = TrendTimeframe;
+
+    // Obtenir le nombre total de barres dans l'historique
+    int totalBars = Bars(symbol, timeframe);
+
+    // Déterminer la valeur effective de bougies à analyser
+    int BougieTendanalyserEffective = BougieTendanalyser;
+
+    // Forcer un minimum de 1000
+    if (BougieTendanalyserEffective < 1000)
+    {
+        BougieTendanalyserEffective = 1000;
+    }
+    // Ne pas dépasser le nombre réel de barres disponibles
+    else if (BougieTendanalyserEffective > totalBars)
+    {
+        BougieTendanalyserEffective = totalBars;
+    }
+
+    // Recalculer si la valeur a changé depuis la dernière fois
+    if (BougieTendanalyserEffective != lastBougieTendanalyserEffective)
+    {
+        // Supprimer les objets existants de la MM de tendance
+        SupprimerObjetsMMTendance();
+
+        // Mettre à jour la valeur mémorisée
+        lastBougieTendanalyserEffective = BougieTendanalyserEffective;
+    }
+
+    // --- Obtenir les données de la MM de tendance ---
+    double maTrend[];
+    ArraySetAsSeries(maTrend, true);
+
+    // Création du handle de la MM
+    int maTrendHandle = iMA(symbol, timeframe, TrendMA_Period, 0, MODE_SMA, PRICE_CLOSE);
+    if (maTrendHandle == INVALID_HANDLE)
+    {
+        Print("Erreur lors de la création du handle de la MM de tendance : ", GetLastError());
+        return;
+    }
+
+    // Copier UNIQUEMENT BougieTendanalyserEffective barres
+    if (CopyBuffer(maTrendHandle, 0, 0, BougieTendanalyserEffective, maTrend) <= 0)
+    {
+        Print("Erreur lors de la copie des données de la MM de tendance.");
+        return;
+    }
+
+    // --- Boucle pour dessiner ou mettre à jour la MM de tendance ---
+    for (int i = 0; i < BougieTendanalyserEffective - 1; i++)
+    {
+        string objName = "MA_Trend_" + IntegerToString(i);
+
+        // Vérifier si on a bien deux points consécutifs valides
+        if (maTrend[i] != EMPTY_VALUE && maTrend[i + 1] != EMPTY_VALUE)
+        {
+            // Créer l'objet s'il n'existe pas
             if (ObjectFind(0, objName) < 0)
             {
-                if(ObjectCreate(0, objName, OBJ_TREND, 0, iTime(symbol, timeframe, i), maTrend[i], iTime(symbol, timeframe, i + 1), maTrend[i + 1]))
+                if (!ObjectCreate(0, objName, OBJ_TREND, 0, 
+                                  iTime(symbol, timeframe, i),     maTrend[i], 
+                                  iTime(symbol, timeframe, i + 1), maTrend[i + 1]))
                 {
-                    Print("Création de l'objet MA : ", objName);
-                }
-                else
-                {
-                    Print("Échec de la création de l'objet MA : ", objName, " Error : ", GetLastError());
+                    Print("Échec de la création de l'objet : ", objName, " Erreur : ", GetLastError());
+                    continue; // Passer à l'objet suivant
                 }
             }
             else
             {
-                // Déplacement de l'objet s'il existe
-                ObjectMove(0, objName, 0, iTime(symbol, timeframe, i), maTrend[i]);
-                ObjectMove(0, objName, 1, iTime(symbol, timeframe, i + 1), maTrend[i + 1]);
-            }
-
-            // --- Déterminer la couleur de la MA en fonction de la tendance
-            color maColor;
-            if (i > 0) // Assurez-vous qu'il y a un point précédent pour la comparaison
-            {
-                if (maTrend[i] < maTrend[i - 1]) {
-                    maColor = TendanceH; // Couleur pour tendance haussière
-                } else if (maTrend[i] > maTrend[i - 1]) {
-                    maColor = TendanceB; // Couleur pour tendance baissière
-                } else {
-                    maColor = TendanceH; // Couleur par défaut si égal, vous pouvez choisir une autre couleur
+                // S'il existe, le déplacer
+                if (!ObjectMove(0, objName, 0, iTime(symbol, timeframe, i), maTrend[i]) ||
+                    !ObjectMove(0, objName, 1, iTime(symbol, timeframe, i + 1), maTrend[i + 1]))
+                {
+                    Print("Échec du déplacement de l'objet : ", objName, " Erreur : ", GetLastError());
+                    continue; // Passer à l'objet suivant
                 }
             }
-            else {
-                maColor = TendanceH; // Première valeur, couleur par défaut
+
+            // --- Déterminer la couleur de la MM en fonction de la tendance ---
+            color maColor = TendanceH; // Valeur par défaut
+            if (i > 0) // Comparer avec le point précédent
+            {
+                if (maTrend[i] < maTrend[i - 1])
+                    maColor = TendanceH; // Haussière
+                else if (maTrend[i] > maTrend[i - 1])
+                    maColor = TendanceB; // Baissière
+                // Si égal, conserver la couleur par défaut ou une autre couleur si souhaité
             }
 
-            // Affectation de la couleur
+            // Appliquer la couleur et la visibilité
             ObjectSetInteger(0, objName, OBJPROP_COLOR, maColor);
-            ObjectSetInteger(0, objName, OBJPROP_HIDDEN, !DisplayOnChart); // Masquer/Afficher selon DisplayOnChart
+            ObjectSetInteger(0, objName, OBJPROP_HIDDEN, !DisplayOnChart);
+            ObjectSetInteger(0, objName, OBJPROP_STYLE, STYLE_SOLID); // Optionnel : Définir le style de ligne
+            ObjectSetInteger(0, objName, OBJPROP_WIDTH, 2);         // Optionnel : Définir l'épaisseur de la ligne
         }
         else
         {
-            // Suppression de l'objet si la valeur est vide
-            ObjectDelete(0, objName);
+            // Si pas de valeur, on supprime pour éviter de laisser des segments cassés
+            if (!ObjectDelete(0, objName))
+            {
+                Print("Échec de la suppression de l'objet : ", objName, " Erreur : ", GetLastError());
+            }
+        }
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour supprimer les objets de la MM de tendance          |
+//+------------------------------------------------------------------+
+void SupprimerObjetsMMTendance()
+{
+    for (int i = ObjectsTotal(0) - 1; i >= 0; i--)
+    {
+        string objName = ObjectName(0, i);
+        // Vérifier si le nom de l'objet commence par "MA_Trend_"
+        if (StringFind(objName, "MA_Trend_") == 0)
+        {
+            if (ObjectDelete(0, objName))
+            {
+                // Optionnel : Afficher un message de suppression réussie
+                // Print("Objet supprimé : ", objName);
+            }
+            else
+            {
+                Print("Échec de la suppression de l'objet : ", objName, " Erreur : ", GetLastError());
+            }
         }
     }
 }
@@ -2677,6 +3171,7 @@ bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, doubl
 {
    double slPercentage = 0.0, tpPercentage = 0.0, slPoints = 0.0, tpPoints = 0.0;
 
+   // Calcul des SL et TP en fonction du type de SL choisi
    if (StopLossType == SL_Classique)
    {
       CalculateClassicSLTP(symbol, orderType, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
@@ -2691,8 +3186,25 @@ bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, doubl
       CalculateGridSLTP(symbol, orderType, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
    }
 
-   // Ouvrir la position
-   if (trade.PositionOpen(symbol, orderType, volume, 0, sl, tp, comment))
+   // Préparer la structure MqlTradeRequest
+   MqlTradeRequest request;
+   MqlTradeResult result;
+   ZeroMemory(request);
+   ZeroMemory(result);
+
+   request.action = TRADE_ACTION_DEAL;
+   request.symbol = symbol;
+   request.volume = volume;
+   request.type = orderType;
+   request.price = (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
+   request.sl = sl;
+   request.tp = tp;
+   request.deviation = 10; // Slippage autorisé
+   request.magic = MagicNumber; // Ajout du Magic Number
+   request.comment = comment;
+
+   // Envoyer l'ordre
+   if (OrderSend(request, result))
    {
       Print("Position ouverte pour ", symbol, " - Type: ", EnumToString(orderType), " - Volume: ", volume);
       Print("SL: ", sl, " - TP: ", tp);
@@ -2702,7 +3214,7 @@ bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, doubl
       Print("TP en points: ", tpPoints);
 
       // Envoyer des notifications
-      SendNotifications(symbol, orderType, volume, (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID), sl, tp);
+      SendNotifications(symbol, orderType, volume, request.price, sl, tp);
 
       // Mettre à jour l'affichage des niveaux de SL si nécessaire
       UpdateSLDisplay(StopLossType == SL_Suiveur, InpSeuilDeclenchement, trailingSL, sl);
@@ -2846,6 +3358,88 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
    }
    return false;
 }
+
+//+-----------------------------------------------------------------------------------+
+// Fonction pour détecter et supprimer une sous-fenêtre sous le graphique principal   |
+//+-----------------------------------------------------------------------------------+
+void DeleteSubWindowIfExists() {
+   // Récupère le nombre total de sous-fenêtres
+   int subWindows = (int)ChartGetInteger(0, CHART_WINDOWS_TOTAL);
+   
+   // Si une sous-fenêtre existe, on vérifie les indicateurs
+   if (subWindows > 0) {
+      for (int i = subWindows; i >= 1; i--) { // Commence à 1 pour ignorer la fenêtre principale
+         // Récupère le nombre d'indicateurs dans la sous-fenêtre
+         int indicatorCount = ChartIndicatorsTotal(0, i);
+         
+         // Si des indicateurs sont présents, on les supprime
+         if (indicatorCount > 0) {
+            for (int j = 0; j < indicatorCount; j++) {
+               string indicatorName = ChartIndicatorName(0, i, j); // Récupère le nom de l'indicateur
+               ChartIndicatorDelete(0, i, indicatorName); // Supprime l'indicateur
+            }
+         } else {
+         }
+      }
+      ChartRedraw(); // Redessine le graphique
+   } else {
+   }
+}
+
+
+//+------------------------------------------------------------------+
+//| Fonction pour supprimer les objets des autres stratégies         |
+//+------------------------------------------------------------------+
+void SupprimerObjetsAutresStrategies(StrategyType currentStrategy)
+{
+    for (int i = ObjectsTotal(0) - 1; i >= 0; i--)
+    {
+        string objName = ObjectName(0, i);
+
+        // Vérifier si l'objet appartient à une autre stratégie
+        bool deleteObject = false;
+
+        // Si la stratégie actuelle est MA_Crossover
+        if (currentStrategy == MA_Crossover)
+        {
+            // Supprimer les objets des stratégies RSI et FVG
+            if ((StringFind(objName, "RSI_") == 0) || (StringFind(objName, "FVG_") == 0) || (StringFind(objName, "Label_FVG_Bullish_") == 0) || (StringFind(objName, "Label_FVG_Bearish_") == 0))
+            {
+                deleteObject = true;
+            }
+            // NE PAS supprimer les objets "MA1_", "MA2_" ou "MA_Trend_"
+        }
+        else if (currentStrategy == RSI_OSOB)
+        {
+            // Supprimer les objets des stratégies MA_Crossover (sauf "MA_Trend_") et FVG
+            if ((StringFind(objName, "MA1_") == 0) || (StringFind(objName, "MA2_") == 0) || (StringFind(objName, "FVG_") == 0) || (StringFind(objName, "Label_FVG_Bullish_") == 0) || (StringFind(objName, "Label_FVG_Bearish_") == 0))
+            {
+                deleteObject = true;
+            }
+            // NE PAS supprimer les objets "MA_Trend_"
+        }
+        else if (currentStrategy == FVG_Strategy)
+        {
+            // Supprimer les objets des stratégies MA_Crossover (sauf "MA_Trend_") et RSI
+            if ((StringFind(objName, "MA1_") == 0) || (StringFind(objName, "MA2_") == 0) || 
+            (StringFind(objName, "RSI_") == 0) ||(StringFind(objName, "RSI_") == 0))
+            {
+                deleteObject = true;
+            }
+            // NE PAS supprimer les objets "MA_Trend_"
+        }
+
+        // Supprimer l'objet s'il appartient à une autre stratégie
+        if (deleteObject)
+        {
+            if (!ObjectDelete(0, objName))
+            {
+                Print("Erreur lors de la suppression de l'objet : ", objName, " Erreur : ", GetLastError());
+            }
+        }
+    }
+}
+
 //+------------------------------------------------------------------+
 //| Fin du code                                                      |
 //+------------------------------------------------------------------+  
