@@ -297,6 +297,7 @@ void OnTick()
 {
    // Mettre à jour les positions existantes (gestion des stops, etc.)
    UpdateExistingPositions();
+   // Suppression indicateur selon strategie de signal
    switch(Strategy) {
       case MA_Crossover:
          if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0) 
