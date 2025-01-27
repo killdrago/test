@@ -229,9 +229,7 @@ void RemoveAllIndicators()
 //| Fonction d'initialisation de l'expert                            |
 //+------------------------------------------------------------------+
 int OnInit()
-{  
-   // Construire la liste des symboles
-   BuildActiveSymbolList();
+{
   // Créer un indicateur RSI
    RSIHandle = iRSI(_Symbol, _Period, RSI_Period, PRICE_CLOSE);
    
@@ -297,7 +295,6 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   
    // Mettre à jour les positions existantes (gestion des stops, etc.)
    UpdateExistingPositions();
    // Suppression indicateur selon strategie de signal
@@ -312,21 +309,21 @@ void OnTick()
          break;
       
       case RSI_OSOB:
-    if(RSI_Period != previous_RSI_Period)
-    {
-        // Supprimer la sous-fenêtre existante si elle existe
-        DeleteSubWindowIfExists();
-        // Afficher le RSI dans une nouvelle sous-fenêtre
-        DisplayRSIInSubWindow();
-        // Mettre à jour la période précédente
-        previous_RSI_Period = RSI_Period;
-    }
-    else
-    {
-        // Afficher simplement le RSI dans la sous-fenêtre existante
-        SupprimerObjetsAutresStrategies(RSI_OSOB);
-        DisplayRSIInSubWindow();
-    }
+         if(RSI_Period != previous_RSI_Period)
+     {
+      // Supprimer la sous-fenêtre existante si elle existe
+      DeleteSubWindowIfExists();
+      // Afficher le RSI dans une nouvelle sous-fenêtre
+      DisplayRSIInSubWindow();
+      // Mettre à jour la période précédente
+      previous_RSI_Period = RSI_Period;
+     }
+   else
+     {
+      // Afficher simplement le RSI dans la sous-fenêtre existante
+      SupprimerObjetsAutresStrategies(RSI_OSOB);
+      DisplayRSIInSubWindow();
+     }
 
          break;
       
@@ -375,7 +372,7 @@ void OnTick()
    }
 
    // Vérifier si les conditions de marché sont favorables
-   if (!IsMarketConditionsSuitable(Symbol()))
+   if (!IsMarketConditionsSuitable())
    {
       Print("Conditions de marché non favorables.");
       return;
@@ -414,7 +411,7 @@ void OnTick()
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier si les conditions de marché sont bonnes    |
 //+------------------------------------------------------------------+
-bool IsMarketConditionsSuitable(string symbol)
+bool IsMarketConditionsSuitable()
 {
    // Vérifier si c'est le week-end
    if (IsWeekend())
@@ -423,30 +420,21 @@ bool IsMarketConditionsSuitable(string symbol)
    // Vérifier le spread si le filtre est activé
    if (UseMaxSpreadFilter)
    {
-      long currentSpread = SymbolInfoInteger(symbol, SYMBOL_SPREAD);
+      long currentSpread = SymbolInfoInteger(Symbol(), SYMBOL_SPREAD);
       if (currentSpread > MaxSpreadPoints)
       {
-         Print("Spread trop élevé pour ", symbol, ": ", currentSpread);
+         Print("Spread trop élevé: ", currentSpread);
          return false;
       }
    }
 
-   // Vérifier si le trading est autorisé pour ce symbole
-   long tradeMode = SymbolInfoInteger(symbol, SYMBOL_TRADE_MODE);
+   // Vérifier si le trading est autorisé
+   long tradeMode = SymbolInfoInteger(Symbol(), SYMBOL_TRADE_MODE);
    if (tradeMode == SYMBOL_TRADE_MODE_DISABLED)
    {
-      Print("Trading non autorisé sur le symbole ", symbol);
+      Print("Trading non autorisé sur ce symbole");
       return false;
    }
-
-   // Vérifier si le symbole est tradable (existe et est sélectionné dans la fenêtre d'observation du marché)
-   if (!SymbolInfoInteger(symbol, SYMBOL_SELECT))
-   {
-      Print("Symbole ", symbol, " non disponible ou non sélectionné.");
-      return false;
-   }
-
-   // Ajouter d'autres conditions spécifiques au symbole si nécessaire...
 
    return true;
 }
@@ -485,69 +473,90 @@ bool IsThereNews(string symbol)
 //+------------------------------------------------------------------+
 void BuildActiveSymbolList()
 {
-    // Réinitialiser la liste
-    ArrayResize(ActiveSymbols, 0);
+   // Réinitialiser la liste
+   ArrayResize(ActiveSymbols, 0);
 
-    // Si TradeAllForexPairs et TradeAllIndices sont false, trader seulement le symbole actuel
-    if (!TradeAllForexPairs && !TradeAllIndices)
-    {
-        string currentSymbol = Symbol();
-        if (SymbolInfoInteger(currentSymbol, SYMBOL_SELECT))
-        {
-            AddSymbolToList(currentSymbol);
-            // Le Print ici n'est pas très utile, car TradeAllForexPairs est une variable globale
-            // Print(TradeAllForexPairs); 
-        }
-        else
-        {
-            Print("Erreur: Le symbole actuel ", currentSymbol, " n'existe pas ou n'est pas disponible.");
-            return;
-        }
-    }
-    else
-    {
-        // Liste des paires Forex principales
-        string ForexPairs[] = {
-            "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD",
-            "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"
-        };
+   // Si TradeAllForexPairs et TradeAllIndices sont false, trader seulement le symbole actuel
+   if (!TradeAllForexPairs && !TradeAllIndices && StringLen(CustomSymbols) == 0)
+   {
+      string currentSymbol = Symbol();
+      if (SymbolInfoInteger(currentSymbol, SYMBOL_SELECT))
+      {
+         AddSymbolToList(currentSymbol);
+      }
+      else
+      {
+         Print("Erreur: Le symbole actuel ", currentSymbol, " n'existe pas ou n'est pas disponible.");
+         return;
+      }
+   }
 
-        // Liste des indices (ajustez les noms si nécessaire selon votre courtier)
-        string Indices[] = {
-            "US30", "US500", "USTEC", "GER40", "UK100", "FRA40" 
-        };
+   // Liste des paires Forex principales
+   string ForexPairs[] = {
+      "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD",
+      "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"
+   };
 
-        // Ajouter les paires Forex si activé
-        if (TradeAllForexPairs)
-        {
-            for (int i = 0; i < ArraySize(ForexPairs); i++)
-            {
-                if (SymbolInfoInteger(ForexPairs[i], SYMBOL_SELECT))
-                    AddSymbolToList(ForexPairs[i]);
-                else
-                    Print("Erreur: La paire Forex ", ForexPairs[i], " n'existe pas ou n'est pas disponible.");
-            }
-        }
+   // Liste des indices
+   string Indices[] = {
+      "US30", "US500", "USTEC", "GER40", "UK100", "FRA40"
+   };
 
-        // Ajouter les indices si activé
-        if (TradeAllIndices)
-        {
-            for (int i = 0; i < ArraySize(Indices); i++)
-            {
-                if (SymbolInfoInteger(Indices[i], SYMBOL_SELECT))
-                    AddSymbolToList(Indices[i]);
-                else
-                    Print("Erreur: L'indice ", Indices[i], " n'existe pas ou n'est pas disponible.");
-            }
-        }
-    }
+   // Ajouter les paires Forex si activé
+   if (TradeAllForexPairs)
+   {
+      for (int i = 0; i < ArraySize(ForexPairs); i++)
+      {
+         if (SymbolInfoInteger(ForexPairs[i], SYMBOL_SELECT))
+            AddSymbolToList(ForexPairs[i]);
+         else
+            Print("Erreur: La paire Forex ", ForexPairs[i], " n'existe pas ou n'est pas disponible.");
+      }
+   }
 
-    // Vérifier si au moins un symbole a été ajouté
-    if (ArraySize(ActiveSymbols) == 0)
-    {
-        Print("Erreur: Aucun symbole actif trouvé. Vérifiez les paramètres de configuration.");
-        return;
-    }
+   // Ajouter les indices si activé
+   if (TradeAllIndices)
+   {
+      for (int i = 0; i < ArraySize(Indices); i++)
+      {
+         if (SymbolInfoInteger(Indices[i], SYMBOL_SELECT))
+            AddSymbolToList(Indices[i]);
+         else
+            Print("Erreur: L'indice ", Indices[i], " n'existe pas ou n'est pas disponible.");
+      }
+   }
+
+   // Ajouter les symboles personnalisés
+   if (StringLen(CustomSymbols) > 0)
+   {
+      string customSymbolsArray[];
+      StringSplit(CustomSymbols, ',', customSymbolsArray);
+
+      for (int i = 0; i < ArraySize(customSymbolsArray); i++)
+      {
+         string symbol = customSymbolsArray[i];
+         StringTrimRight(symbol);
+         StringTrimLeft(symbol);
+
+         if (StringLen(symbol) == 0)
+         {
+            Print("Erreur: Symbole vide dans CustomSymbols.");
+            continue;
+         }
+
+         if (SymbolInfoInteger(symbol, SYMBOL_SELECT))
+            AddSymbolToList(symbol);
+         else
+            Print("Erreur: Le symbole personnalisé ", symbol, " n'existe pas ou n'est pas disponible.");
+      }
+   }
+
+   // Vérifier si au moins un symbole a été ajouté
+   if (ArraySize(ActiveSymbols) == 0)
+   {
+      Print("Erreur: Aucun symbole actif trouvé. Vérifiez les paramètres de configuration.");
+      return;
+   }
 }
 
 //+------------------------------------------------------------------+
@@ -692,84 +701,81 @@ void ReleaseIndicatorHandles()
 //+------------------------------------------------------------------+
 void CheckForNewSignals()
 {
-   for (int i = 0; i < ArraySize(ActiveSymbols); i++)
+   // Vérifier les conditions de trading
+   if (!IsMarketConditionsSuitable())
    {
-      string symbol = ActiveSymbols[i];
+      Print("Conditions de marché non favorables.");
+      return;
+   }
 
-      // Vérifier les conditions de trading
-      if (!IsMarketConditionsSuitable(symbol))
+   // Vérifier les actualités importantes
+   if (UseNewsFilter && IsThereNews(Symbol()))
+   {
+      Print("Actualités importantes détectées, trading évité.");
+      return;
+   }
+
+   // Variable pour stocker la tendance
+   MarketTrend trend = Indecis; // Assurez-vous que cette valeur par défaut est correcte
+
+   // Vérifier si la détection de tendance est activée
+   if (UseTrendDetection)
+   {
+      // Obtenir la tendance
+      trend = GetMarketTrend(Symbol(), 0);
+      
+   }
+   else
+   {
+      Print("Détection de tendance désactivée.");
+   }
+
+   // Vérifier le signal selon la stratégie choisie
+   CrossSignal signal = CheckStrategySignal(Symbol(), 0);
+
+   if (signal != Aucun)
+   {
+      Print("Signal détecté : ", EnumToString(signal));
+
+      // Calculer le volume
+      double volume = CalculateVolume(Symbol());
+      if (volume <= 0)
       {
-         Print("Conditions de marché non favorables pour ", symbol);
-         continue; // Passer au symbole suivant
+         Print("Volume invalide pour ", Symbol());
+         return;
       }
 
-      // Vérifier les actualités importantes
-      if (UseNewsFilter && IsThereNews(symbol))
+      // Vérifier la tendance avant de prendre des décisions d'achat ou de vente
+      if (signal == Achat && trend != TrendBaissiere)
       {
-         Print("Actualités importantes détectées pour ", symbol, ", trading évité.");
-         continue; // Passer au symbole suivant
+         // Ouvrir la position avec Stop Loss Classique
+         if (StopLossType == SL_Classique)
+         {
+            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+            {
+               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+            }
+         }
+         // Ajoutez d'autres types de Stop Loss ici si nécessaire
       }
-
-      // Variable pour stocker la tendance
-      MarketTrend trend = Indecis; // Assurez-vous que cette valeur par défaut est correcte
-
-      // Vérifier si la détection de tendance est activée
-      if (UseTrendDetection)
+      else if (signal == Vente && trend != TrendHaussiere)
       {
-         // Obtenir la tendance
-         trend = GetMarketTrend(symbol, 0);
+         // Ouvrir la position avec Stop Loss Classique
+         if (StopLossType == SL_Classique)
+         {
+            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+            {
+               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+            }
+         }
+         // Ajoutez d'autres types de Stop Loss ici si nécessaire
       }
       else
       {
-         Print("Détection de tendance désactivée pour ", symbol);
-      }
-
-      // Vérifier le signal selon la stratégie choisie
-      CrossSignal signal = CheckStrategySignal(symbol, 0);
-
-      if (signal != Aucun)
-      {
-         Print("Signal détecté pour ", symbol, " : ", EnumToString(signal));
-
-         // Calculer le volume
-         double volume = CalculateVolume(symbol);
-         if (volume <= 0)
-         {
-            Print("Volume invalide pour ", symbol);
-            continue; // Passer au symbole suivant
-         }
-
-         // Vérifier la tendance avant de prendre des décisions d'achat ou de vente
-         if (signal == Achat && trend != TrendBaissiere)
-         {
-            // Ouvrir la position avec Stop Loss Classique
-            if (StopLossType == SL_Classique)
-            {
-               if (OpenPositionWithClassicSL(symbol, signal, volume))
-               {
-                  Print("Position ouverte avec Stop Loss Classique pour ", symbol);
-               }
-            }
-            // Ajoutez d'autres types de Stop Loss ici si nécessaire
-         }
-         else if (signal == Vente && trend != TrendHaussiere)
-         {
-            // Ouvrir la position avec Stop Loss Classique
-            if (StopLossType == SL_Classique)
-            {
-               if (OpenPositionWithClassicSL(symbol, signal, volume))
-               {
-                  Print("Position ouverte avec Stop Loss Classique pour ", symbol);
-               }
-            }
-            // Ajoutez d'autres types de Stop Loss ici si nécessaire
-         }
-         else
-         {
-            Print("Signal non pris en compte pour ", symbol, " en raison de la tendance du marché.");
-         }
+         Print("Signal non pris en compte en raison de la tendance du marché.");
       }
    }
+
 }
 
 //+------------------------------------------------------------------+
