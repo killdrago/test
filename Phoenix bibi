@@ -50,25 +50,39 @@ CPositionInfo position;
 input string  magic_settings          = "=== Gestion du Magic Number ===";
 input bool    UseMagicNumber          = true;            // False = Manuel + Tous magic
 input int     MagicNumber             = 123456;          // Magic Number
-
+input string  ecart1                  = "";
 input string  display_settings        = "=== Paramètres d'affichage ===";
 input bool    DisplayTable            = true; // Afficher le tableau d'informations
 input int     TextPosition            = 4;               // 1=Haut gauche, 2=Haut Droite, 3=Bas Gauche, 4=Bas Droite
 input color   TextColor               = clrBlack;        // Couleur de tous les textes
 input color   TableFondColor          = clrYellow;       // Couleur de fond du tableau
-
+input string  ecart2                  = "";
+input string  symbol_settings         = "=== Symboles à trader ===";
+input bool    TradeAllForexPairs      = false;           // Trader toutes les paires Forex
+input bool    TradeAllIndices         = false;           // Trader tous les indices
+input string  ecart3                  = "";
+input string  news_settings           = "=== Gestion des actualités ===";
+input bool    UseNewsFilter           = true;            // Utiliser le filtre des actualités
+input int     NewsFilterMinutesBefore = 60;              // Minutes avant les actualités pour éviter le trading
+input int     NewsFilterMinutesAfter  = 60;              // Minutes après les actualités pour éviter le trading
+input uint    NewsImportance          = 3;               // Niveau d'importance des actualités (1=Faible, 2=Moyen, 3=Fort)
+input string  ecart4                  = "";
+input string  notification            = "=== Notification ===";
+input bool    EnablePushNotifications = false;            // Activer les notifications push
+input bool    EnableAlerts            = false;            // Activer les alertes (fenêtre pop-up MT5)
+input string  ecart5                  = "";
 input string  martingale_settings     = "=== Paramètres des lots et martingale ===";
 enum LotType {LotFixe, Martingale};
 input LotType LotSizeType             = LotFixe;         // Type de gestion du volume
 input double  FixedLotSize            = 0.01;            // Taille de lot fixe
 input double  MartingaleStartLot      = 0.01;            // Lot de départ pour la martingale
 input double  MartingaleMultiplier    = 2.0;             // Multiplicateur de la martingale
-
+input string  ecart6                  = "";
 input string  spreadslippage          = "=== Spread et slippage ===";
 input bool    UseMaxSpreadFilter      = false;           // Utiliser le filtre de spread maximum
 input long    MaxSpreadPoints         = 20;              // Spread maximum autorisé en points
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
-
+input string  ecart7                  = "";
 input string trend_settings           = "=== Méthode de détermination de la tendance ===";
 input bool DisplayOnChart             = true;            // Afficher les indicateurs de tendance sur le graphique
 input bool UseTrendDetection          = true;            // activer ou désactiver la détection de tendance
@@ -80,11 +94,11 @@ input int TrendMA_Period              = 200;             // Période de la MM po
 input int   BougieTendanalyser        = 1000;            // Nombre de bougies à utiliser 1000 minimum
 input color TendanceH                 = clrBlue;
 input color TendanceB                 = clrYellow;
-
+input string  ecart8                  = "";
 input string  strategy_settings       = "=== Stratégie de trading ===";
 enum StrategyType {MA_Crossover, RSI_OSOB, FVG_Strategy};
 input StrategyType Strategy           = MA_Crossover;    // Choix de la stratégie
-
+input string  ecart9                  = "";
 //--- Paramètres pour la stratégie de croisement de MM
 input string  ma_settings             = "--- Paramètres des Moyennes Mobiles ---";
 input int     MA_Period1              = 50;              // Période de la première MM
@@ -93,43 +107,33 @@ input ENUM_MA_METHOD MA_Method        = MODE_SMA;        // Méthode de calcul d
 input ENUM_APPLIED_PRICE MA_Price     = PRICE_CLOSE;     // Prix appliqué pour les MM
 input color   couleurdoubleMM         = clrYellow;       // Couleur des deux MM
 input int     BougieMMaanalyser       = 1000;            // Nombre de bougies à utiliser 1000 minimum
-
+input string  ecart10                 = "";
 //--- Paramètres pour la stratégie RSI
 input string  rsi_settings            = "--- Paramètres RSI ---";
 input int     RSI_Period              = 14;              // Période du RSI
-
+input string  ecart11                = "";
 //--- Paramètres pour la stratégie FVG
 input string  fvg_settings            = "--- Paramètres FVG ---";
 input int     FVG_CandleLength        = 5;               // Longueur du rectangle en bougies
 input double  FVG_MinAmplitudePoints  = 50;              // Amplitude minimale du FVG en points
 input color   RectangleFVG            = clrRed;          // Couleur du rectangle FVG
-input string LabelBullish           = "FVG BISI";                 // Texte pour les FVG haussiers
-input string LabelBearish           = "FVG SIBI";                 // Texte pour les FVG baissiers
-input color  LabelColor             = clrWhite;                   // Couleur du texte des labels
-input color  FVGColorBullish        = clrGreen;                   // Couleur des FVG haussiers
-input color  FVGColorBearish        = clrRed;                     // Couleur des FVG baissiers
+input string LabelBullish             = "FVG BISI";                 // Texte pour les FVG haussiers
+input string LabelBearish             = "FVG SIBI";                 // Texte pour les FVG baissiers
+input color  LabelColor               = clrWhite;                   // Couleur du texte des labels
+input color  FVGColorBullish          = clrGreen;                   // Couleur des FVG haussiers
+input color  FVGColorBearish          = clrRed;                     // Couleur des FVG baissiers
 enum FVG_Action {Breakout, Rebound};
 input FVG_Action FVG_TradeAction      = Breakout;        // Action à entreprendre (Breakout ou Rebond)
-input int     BougieFVGaanalyser       = 1000;            // Nombre de bougies à utiliser 1000 minimum
-
-input string  symbol_settings         = "=== Symboles à trader ===";
-input bool    TradeAllForexPairs      = false;           // Trader toutes les paires Forex
-input bool    TradeAllIndices         = false;           // Trader tous les indices
-
-input string  news_settings           = "=== Gestion des actualités ===";
-input bool    UseNewsFilter           = true;            // Utiliser le filtre des actualités
-input int     NewsFilterMinutesBefore = 60;              // Minutes avant les actualités pour éviter le trading
-input int     NewsFilterMinutesAfter  = 60;              // Minutes après les actualités pour éviter le trading
-input uint    NewsImportance          = 3;               // Niveau d'importance des actualités (1=Faible, 2=Moyen, 3=Fort)
-
+input int     BougieFVGaanalyser      = 1000;            // Nombre de bougies à utiliser 1000 minimum
+input string  ecart12                = "";
 input string  stoploss_settings       = "=== Paramètres de Stop Loss ===";
 enum StopType {SL_Classique, SL_Suiveur, GridTrading};
 input StopType StopLossType           = SL_Classique;    // Type de Stop Loss
-
+input string  ecart13                = "";
 input string  sl_classique_settings   = "--- Paramètres SL Classique ---";
 input double  StopLossCurrency        = 1.0;             // Stop Loss en devise (0 pour aucun SL)
 input double  TakeProfitCurrency      = 1.0;            // Take Profit en devise (0 pour aucun TP)
-
+input string  ecart14                = "";
 input string  sl_suiveur_settings     = "=== Paramètres du SL suiveur ===";
 input string  reglageslsuiveur        = "--- réglage SLsuiveur ---";
 input double  InpSeuilDeclenchement   = 1.5;             // Seuil de déclenchement en devise
@@ -137,7 +141,7 @@ input bool    InpActivationRespiration = true;           // Activation de la res
 input double  InpRespiration          = 1.0;             // Respiration pour le seuil de déclenchement en devise
 input double  InpRespirationSL        = 0.5;             // Respiration pour le SL suiveur en devise
 input double  InpSLsuiveur            = 30.0;            // Distance du SL suiveur en devises
-
+input string  ecart15                 = "";
 //--- Paramètres pour le Grid Trading
 input string  grid_settings           = "--- Paramètres du Grid Trading ---";
 input double  GridTakeProfitPoints    = 100;             // Take Profit en devise
@@ -2228,21 +2232,23 @@ void SendNotifications(string symbol, ENUM_ORDER_TYPE orderType, double volume, 
    double slPoints = CalculatePriceDifferenceInPoints(symbol, price, sl);
    double tpPoints = CalculatePriceDifferenceInPoints(symbol, price, tp);
 
-   string message = StringFormat("🔔 %s: Nouvelle position %s ouverte\nVolume: %.2f\nPrix: %.5f\nSL: %.2f %s (%.2f%%, %.2f points)\nTP: %.2f %s (%.2f%%, %.2f points)", 
-                                 symbol, direction, volume, price, 
+   string message = StringFormat("🔔 %s: Nouvelle position %s ouverte\nVolume: %.2f\nPrix: %.5f\nSL: %.2f %s (%.2f%%, %.2f points)\nTP: %.2f %s (%.2f%%, %.2f points)",
+                                 symbol, direction, volume, price,
                                  slInCurrency, AccountInfoString(ACCOUNT_CURRENCY), slPercentage, slPoints,
                                  tpInCurrency, AccountInfoString(ACCOUNT_CURRENCY), tpPercentage, tpPoints);
 
    // Notification push sur le mobile
-   if (!SendNotification(message))
-      Print("Erreur lors de l'envoi de la notification push: ", GetLastError());
+   if (EnablePushNotifications)
+   {
+      if (!SendNotification(message))
+          Print("Erreur lors de l'envoi de la notification push: ", GetLastError());
+   }
 
-   // Notification sonore
-   PlaySound("alert.wav");
-
-   // Email notification (optionnel)
-   if (!SendMail("Signal de Trading", message))
-      Print("Erreur lors de l'envoi de l'email: ", GetLastError());
+   // Alerte dans une fenêtre MT5
+   if (EnableAlerts)
+   {
+       Alert(message);
+   }
 
    // Afficher dans le journal
    Print(message);
