@@ -232,7 +232,7 @@ int OnInit()
 {
   // Créer un indicateur RSI
    RSIHandle = iRSI(_Symbol, _Period, RSI_Period, PRICE_CLOSE);
-   
+
    // Ajouter une sous-fenêtre au graphique
    ChartSetInteger(0, CHART_WINDOWS_TOTAL, 2);
 
@@ -243,14 +243,14 @@ int OnInit()
         Print("Erreur lors de l'initialisation de Ichimoku pour ", Symbol());
         return INIT_FAILED;
     }
-    
+
     ArrayResize(Ichimoku_Handle, 1);
     Ichimoku_Handle[0] = ichimokuHandle;
-    
+
     // Initialisation des handles pour les moyennes mobiles
     ArrayResize(MA_Handle1, 1);
     ArrayResize(MA_Handle2, 1);
-    
+
     MA_Handle1[0] = iMA(Symbol(), TrendTimeframe, MA_Period1, 0, MA_Method, MA_Price);
     MA_Handle2[0] = iMA(Symbol(), TrendTimeframe, MA_Period2, 0, MA_Method, MA_Price);
 
@@ -261,6 +261,12 @@ int OnInit()
     }
 
     Print("Handles initialisés avec succès");
+
+    // Préparer la liste des symboles actifs au démarrage
+    BuildActiveSymbolList();
+    // Initialiser les handles des indicateurs pour tous les symboles actifs
+    InitializeIndicatorHandles();
+
     return INIT_SUCCEEDED;
 }
 
@@ -271,11 +277,11 @@ void OnDeinit(const int reason)
 {
   // Libérer le handle de l'indicateur
    IndicatorRelease(RSIHandle);
-   
+
    // Supprimer les objets
    ObjectDelete(0, "RSI_Ligne_70");
    ObjectDelete(0, "RSI_Ligne_30");
-   
+
    // Nettoyer les objets graphiques
    CleanupLabels(); // Appel à la fonction de nettoyage des labels
 
@@ -288,6 +294,10 @@ void OnDeinit(const int reason)
 
    // Afficher le message de déinitialisation
    Print("Expert Advisor déinitialisé");
+
+   // Libérer les handles des indicateurs multi-paires
+   ReleaseIndicatorHandles(); 
+
 }
 
 //+------------------------------------------------------------------+
@@ -295,19 +305,20 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   // Mettre à jour les positions existantes (gestion des stops, etc.)
-   UpdateExistingPositions();
+    // Mettre à jour la liste des symboles actifs à chaque tick
+    BuildActiveSymbolList();
+
    // Suppression indicateur selon strategie de signal
    switch(Strategy) {
       case MA_Crossover:
-         if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0) 
+         if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0)
          { // Si une sous-fenêtre existe
             DeleteSubWindowIfExists(); // Supprime la sous-fenêtre
          }
          SupprimerObjetsAutresStrategies(MA_Crossover);
          DisplayMAsignal(); // Affiche la MA
          break;
-      
+
       case RSI_OSOB:
          if(RSI_Period != previous_RSI_Period)
      {
@@ -326,10 +337,10 @@ void OnTick()
      }
 
          break;
-      
+
       case FVG_Strategy:
          SupprimerObjetsAutresStrategies(FVG_Strategy);
-         if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0) 
+         if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0)
          { // Si une sous-fenêtre existe
             DeleteSubWindowIfExists(); // Supprime la sous-fenêtre
          }
@@ -337,7 +348,7 @@ void OnTick()
          break;
    }
 
-   
+
    static int localcurrentTrendMethod = -1;  // ou toute autre valeur
 
    // Gérer la visibilité des indicateurs en fonction de UseTrendDetection
@@ -396,18 +407,60 @@ void OnTick()
       return;
    }
 
-   // Vérifier les actualités importantes
-   if (UseNewsFilter && IsThereNews(Symbol()))
+   //---  Début de la boucle ajoutée dans OnTick pour multi-paires ---
+   for (int i = 0; i < ArraySize(ActiveSymbols); i++)
    {
-      Print("Actualités importantes détectées, trading évité.");
-      return;
+      string symbol = ActiveSymbols[i];
+
+      // Vérifier si les conditions de marché sont favorables pour ce symbole
+      if (!IsMarketConditionsSuitableForSymbol(symbol)) // <--- Nouvelle fonction (étape 4)
+      {
+         Print("Conditions de marché non favorables pour ", symbol);
+         continue; // Passer au symbole suivant
+      }
+
+      // Vérifier les actualités importantes pour ce symbole
+      if (UseNewsFilter && IsThereNews(symbol)) // <--- Nouvelle fonction (étape 5)
+      {
+         Print("Actualités importantes détectées pour ", symbol, ", trading évité.");
+         return; // Passer au symbole suivant (RETURN, pas CONTINUE ici, car on ne veut pas trader d'autres symboles si news)
+      }
+
+      // Vérifier les signaux et ouvrir des positions si nécessaire pour ce symbole
+      CheckForNewSignals(symbol, i); // <--- Fonction CheckForNewSignals modifiée (étape 6)
    }
 
-   // Vérifier les signaux et ouvrir des positions si nécessaire
-   CheckForNewSignals();
-
+    // Mettre à jour les positions existantes (gestion des stops, etc.) -  **MODIFICATION: Appelée APRES la boucle des symboles**
+    UpdateExistingPositions(); // <--- Déplacé ici APRÈS la boucle multi-paires
 }
 
+bool IsMarketConditionsSuitableForSymbol(string symbol)
+{
+   // Vérifier si c'est le week-end (vérification globale, pas besoin par symbole)
+   if (IsWeekend())
+      return false;
+
+   // Vérifier le spread si le filtre est activé
+   if (UseMaxSpreadFilter)
+   {
+      long currentSpread = SymbolInfoInteger(symbol, SYMBOL_SPREAD);
+      if (currentSpread > MaxSpreadPoints)
+      {
+         Print("Spread trop élevé pour ", symbol, ": ", currentSpread);
+         return false;
+      }
+   }
+
+   // Vérifier si le trading est autorisé pour ce symbole
+   long tradeMode = SymbolInfoInteger(symbol, SYMBOL_TRADE_MODE);
+   if (tradeMode == SYMBOL_TRADE_MODE_DISABLED)
+      {
+      Print("Trading non autorisé sur le symbole ", symbol);
+      return false;
+      }
+
+   return true; // Conditions de marché OK pour ce symbole
+}
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier si les conditions de marché sont bonnes    |
 //+------------------------------------------------------------------+
@@ -493,8 +546,7 @@ void BuildActiveSymbolList()
 
    // Liste des paires Forex principales
    string ForexPairs[] = {
-      "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD",
-      "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"
+      "USDJPY", "USDCAD", "USDCHF", "EURUSD", "EURGBP", "EURAUD", "EURJPY", "EURCAD", "EURCHF", "EURNZD", "GBPUSD", "GBPNZD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPAUD", "CADCHF", "CADJPY", "CHFJPY", "AUDCAD", "AUDCHF", "AUDUSD", "AUDJPY", "AUDNZD", "NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD", 
    };
 
    // Liste des indices
@@ -699,17 +751,17 @@ void ReleaseIndicatorHandles()
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier les nouveaux signaux                      |
 //+------------------------------------------------------------------+
-void CheckForNewSignals()
+void CheckForNewSignals(string symbol, int symbolIndex)
 {
    // Vérifier les conditions de trading
-   if (!IsMarketConditionsSuitable())
+   if (!IsMarketConditionsSuitableForSymbol(symbol))
    {
-      Print("Conditions de marché non favorables.");
+      Print("Conditions de marché non favorables pour ", symbol);
       return;
    }
 
    // Vérifier les actualités importantes
-   if (UseNewsFilter && IsThereNews(Symbol()))
+   if (UseNewsFilter && IsThereNews(symbol))
    {
       Print("Actualités importantes détectées, trading évité.");
       return;
@@ -722,8 +774,8 @@ void CheckForNewSignals()
    if (UseTrendDetection)
    {
       // Obtenir la tendance
-      trend = GetMarketTrend(Symbol(), 0);
-      
+      trend = GetMarketTrend(symbol, symbolIndex);
+
    }
    else
    {
@@ -731,17 +783,17 @@ void CheckForNewSignals()
    }
 
    // Vérifier le signal selon la stratégie choisie
-   CrossSignal signal = CheckStrategySignal(Symbol(), 0);
+   CrossSignal signal = CheckStrategySignal(symbol, symbolIndex);
 
    if (signal != Aucun)
    {
       Print("Signal détecté : ", EnumToString(signal));
 
       // Calculer le volume
-      double volume = CalculateVolume(Symbol());
+      double volume = CalculateVolume(symbol);
       if (volume <= 0)
       {
-         Print("Volume invalide pour ", Symbol());
+         Print("Volume invalide pour ", symbol);
          return;
       }
 
@@ -751,9 +803,9 @@ void CheckForNewSignals()
          // Ouvrir la position avec Stop Loss Classique
          if (StopLossType == SL_Classique)
          {
-            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+            if (OpenPositionWithClassicSL(symbol, signal, volume))
             {
-               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+               Print("Position ouverte avec Stop Loss Classique pour ", symbol);
             }
          }
          // Ajoutez d'autres types de Stop Loss ici si nécessaire
@@ -763,9 +815,9 @@ void CheckForNewSignals()
          // Ouvrir la position avec Stop Loss Classique
          if (StopLossType == SL_Classique)
          {
-            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+            if (OpenPositionWithClassicSL(symbol, signal, volume))
             {
-               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+               Print("Position ouverte avec Stop Loss Classique pour ", symbol);
             }
          }
          // Ajoutez d'autres types de Stop Loss ici si nécessaire
@@ -2709,6 +2761,7 @@ void UpdateSLDisplay(bool isActivated, double seuil_activation = 0.0, double seu
       }
    }
 }
+
 //+------------------------------------------------------------------+
 //| Fonction pour ajuster les valeurs de respiration et seuils       |
 //+------------------------------------------------------------------+
@@ -3315,7 +3368,7 @@ bool OpenPositionWithGridTrading(string symbol, CrossSignal signal, double volum
 //+------------------------------------------------------------------+
 bool OpenPositionWithTrailingSL(string symbol, CrossSignal signal, double volume)
 {
-   if (IsPositionOpen(symbol))
+   if (IsPositionOpen(symbol) == true)
    {
       Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
       return false;
@@ -3338,7 +3391,7 @@ bool OpenPositionWithTrailingSL(string symbol, CrossSignal signal, double volume
 //+------------------------------------------------------------------+
 bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
 {
-   if (PositionSelect(_Symbol) == true)
+   if (IsPositionOpen(symbol) == true)
    {
       Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
       return false;
