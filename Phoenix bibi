@@ -115,7 +115,6 @@ input int     BougieFVGaanalyser       = 1000;            // Nombre de bougies �
 input string  symbol_settings         = "=== Symboles à trader ===";
 input bool    TradeAllForexPairs      = false;           // Trader toutes les paires Forex
 input bool    TradeAllIndices         = false;           // Trader tous les indices
-input string  CustomSymbols           = "";              // Liste personnalisée de symboles, séparés par des virgules
 
 input string  news_settings           = "=== Gestion des actualités ===";
 input bool    UseNewsFilter           = true;            // Utiliser le filtre des actualités
@@ -530,7 +529,7 @@ void BuildActiveSymbolList()
    ArrayResize(ActiveSymbols, 0);
 
    // Si TradeAllForexPairs et TradeAllIndices sont false, trader seulement le symbole actuel
-   if (!TradeAllForexPairs && !TradeAllIndices && StringLen(CustomSymbols) == 0)
+   if (!TradeAllForexPairs && !TradeAllIndices)
    {
       string currentSymbol = Symbol();
       if (SymbolInfoInteger(currentSymbol, SYMBOL_SELECT))
@@ -546,12 +545,12 @@ void BuildActiveSymbolList()
 
    // Liste des paires Forex principales
    string ForexPairs[] = {
-      "USDJPY", "USDCAD", "USDCHF", "EURUSD", "EURGBP", "EURAUD", "EURJPY", "EURCAD", "EURCHF", "EURNZD", "GBPUSD", "GBPNZD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPAUD", "CADCHF", "CADJPY", "CHFJPY", "AUDCAD", "AUDCHF", "AUDUSD", "AUDJPY", "AUDNZD", "NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD", 
+      "USDJPY", "USDCAD", "USDCHF", "EURUSD", "EURGBP", "EURAUD", "EURJPY", "EURCAD", "EURCHF", "EURNZD", "GBPUSD", "GBPNZD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPAUD", "CADCHF", "CADJPY", "CHFJPY", "AUDCAD", "AUDCHF", "AUDUSD", "AUDJPY", "AUDNZD", "NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"
    };
 
    // Liste des indices
    string Indices[] = {
-      "US30", "US500", "USTEC", "GER40", "UK100", "FRA40"
+      "Esp35", "Euro50", "Ger40", "Fra40", "UK100" 
    };
 
    // Ajouter les paires Forex si activé
@@ -578,31 +577,6 @@ void BuildActiveSymbolList()
       }
    }
 
-   // Ajouter les symboles personnalisés
-   if (StringLen(CustomSymbols) > 0)
-   {
-      string customSymbolsArray[];
-      StringSplit(CustomSymbols, ',', customSymbolsArray);
-
-      for (int i = 0; i < ArraySize(customSymbolsArray); i++)
-      {
-         string symbol = customSymbolsArray[i];
-         StringTrimRight(symbol);
-         StringTrimLeft(symbol);
-
-         if (StringLen(symbol) == 0)
-         {
-            Print("Erreur: Symbole vide dans CustomSymbols.");
-            continue;
-         }
-
-         if (SymbolInfoInteger(symbol, SYMBOL_SELECT))
-            AddSymbolToList(symbol);
-         else
-            Print("Erreur: Le symbole personnalisé ", symbol, " n'existe pas ou n'est pas disponible.");
-      }
-   }
-
    // Vérifier si au moins un symbole a été ajouté
    if (ArraySize(ActiveSymbols) == 0)
    {
@@ -626,7 +600,7 @@ void AddSymbolToList(string symbol)
 //+------------------------------------------------------------------+
 void InitializeIndicatorHandles()
 {
-   if (!TradeAllForexPairs && !TradeAllIndices && StringLen(CustomSymbols) == 0)
+   if (!TradeAllForexPairs && !TradeAllIndices)
    {
       string symbol = Symbol();
 
@@ -731,7 +705,7 @@ void InitializeIndicatorHandles()
 //+------------------------------------------------------------------+
 void ReleaseIndicatorHandles()
 {
-   if (!TradeAllForexPairs && !TradeAllIndices && StringLen(CustomSymbols) == 0)
+   if (!TradeAllForexPairs && !TradeAllIndices)
    {
       if (MA_Handle1[0] != INVALID_HANDLE) IndicatorRelease(MA_Handle1[0]);
       if (MA_Handle2[0] != INVALID_HANDLE) IndicatorRelease(MA_Handle2[0]);
@@ -789,14 +763,19 @@ void CheckForNewSignals(string symbol, int symbolIndex)
    {
       Print("Signal détecté : ", EnumToString(signal));
 
-      // Calculer le volume
-      double volume = CalculateVolume(symbol);
-      if (volume <= 0)
-      {
-         Print("Volume invalide pour ", symbol);
-         return;
-      }
+double volume = CalculateVolume(symbol);
 
+if (LotSizeType == LotFixe && volume > FixedLotSize)
+{
+   Print("Volume calculé (", volume, ") supérieur à FixedLotSize (", FixedLotSize, ") pour ", symbol, ". Ordre annulé.");
+   return;
+}
+
+if (volume <= 0)
+{
+   Print("Volume invalide (", volume, ") pour ", symbol);
+   return;
+}
       // Vérifier la tendance avant de prendre des décisions d'achat ou de vente
       if (signal == Achat && trend != TrendBaissiere)
       {
@@ -2216,6 +2195,13 @@ double CalculateVolume(string symbol)
    double lotStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
    lotSize = NormalizeDouble(MathRound(lotSize / lotStep) * lotStep, 2);
 
+Print("--- Informations du symbole ", symbol, " ---");
+Print("SYMBOL_VOLUME_MIN: ", SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN));
+Print("SYMBOL_VOLUME_MAX: ", SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX));
+Print("SYMBOL_VOLUME_STEP: ", SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP));
+Print("FixedLotSize: ", FixedLotSize);  // Pour vérifier
+Print("--- Fin informations ---");
+
    // Afficher dans le journal pour le débogage
    Print("Lot calculé pour ", symbol, " : ", lotSize, " (Méthode : ", EnumToString(LotSizeType), ")");
 
@@ -3030,19 +3016,6 @@ void CalculateClassicSLTP(string symbol, ENUM_ORDER_TYPE orderType, double &sl, 
    // Convertir les niveaux de SL et TP en pourcentage de l'équité
    slPercentage = ConvertToEquityPercentage(slCurrency);
    tpPercentage = ConvertToEquityPercentage(tpCurrency);
-
-   // Afficher les informations pour le débogage
-   Print("SL classique calculé :");
-   Print("SL en pips : ", slPoints);
-   Print("SL en devise : ", slCurrency, " ", AccountInfoString(ACCOUNT_CURRENCY));
-   Print("SL en pourcentage de l'équité : ", slPercentage, "%");
-   Print("SL en prix : ", sl);
-
-   Print("TP classique calculé :");
-   Print("TP en pips : ", tpPoints);
-   Print("TP en devise : ", tpCurrency, " ", AccountInfoString(ACCOUNT_CURRENCY));
-   Print("TP en pourcentage de l'équité : ", tpPercentage, "%");
-   Print("TP en prix : ", tp);
 }
 
 //+------------------------------------------------------------------+
