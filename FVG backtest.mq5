@@ -50,25 +50,39 @@ CPositionInfo position;
 input string  magic_settings          = "=== Gestion du Magic Number ===";
 input bool    UseMagicNumber          = true;            // False = Manuel + Tous magic
 input int     MagicNumber             = 123456;          // Magic Number
-
+input string  ecart1                  = "";
 input string  display_settings        = "=== Paramètres d'affichage ===";
 input bool    DisplayTable            = true; // Afficher le tableau d'informations
 input int     TextPosition            = 4;               // 1=Haut gauche, 2=Haut Droite, 3=Bas Gauche, 4=Bas Droite
 input color   TextColor               = clrBlack;        // Couleur de tous les textes
 input color   TableFondColor          = clrYellow;       // Couleur de fond du tableau
-
+input string  ecart2                  = "";
+input string  symbol_settings         = "=== Symboles à trader ===";
+input bool    TradeAllForexPairs      = false;           // Trader toutes les paires Forex
+input bool    TradeAllIndices         = false;           // Trader tous les indices
+input string  ecart3                  = "";
+input string  news_settings           = "=== Gestion des actualités ===";
+input bool    UseNewsFilter           = true;            // Utiliser le filtre des actualités
+input int     NewsFilterMinutesBefore = 60;              // Minutes avant les actualités pour éviter le trading
+input int     NewsFilterMinutesAfter  = 60;              // Minutes après les actualités pour éviter le trading
+input uint    NewsImportance          = 3;               // Niveau d'importance des actualités (1=Faible, 2=Moyen, 3=Fort)
+input string  ecart4                  = "";
+input string  notification            = "=== Notification ===";
+input bool    EnablePushNotifications = false;            // Activer les notifications push
+input bool    EnableAlerts            = false;            // Activer les alertes (fenêtre pop-up MT5)
+input string  ecart5                  = "";
 input string  martingale_settings     = "=== Paramètres des lots et martingale ===";
 enum LotType {LotFixe, Martingale};
 input LotType LotSizeType             = LotFixe;         // Type de gestion du volume
 input double  FixedLotSize            = 0.01;            // Taille de lot fixe
 input double  MartingaleStartLot      = 0.01;            // Lot de départ pour la martingale
 input double  MartingaleMultiplier    = 2.0;             // Multiplicateur de la martingale
-
+input string  ecart6                  = "";
 input string  spreadslippage          = "=== Spread et slippage ===";
 input bool    UseMaxSpreadFilter      = false;           // Utiliser le filtre de spread maximum
 input long    MaxSpreadPoints         = 20;              // Spread maximum autorisé en points
 input long    MaxSlippagePoints       = 3;               // Slippage maximum autorisé en points
-
+input string  ecart7                  = "";
 input string trend_settings           = "=== Méthode de détermination de la tendance ===";
 input bool DisplayOnChart             = true;            // Afficher les indicateurs de tendance sur le graphique
 input bool UseTrendDetection          = true;            // activer ou désactiver la détection de tendance
@@ -80,11 +94,11 @@ input int TrendMA_Period              = 200;             // Période de la MM po
 input int   BougieTendanalyser        = 1000;            // Nombre de bougies à utiliser 1000 minimum
 input color TendanceH                 = clrBlue;
 input color TendanceB                 = clrYellow;
-
+input string  ecart8                  = "";
 input string  strategy_settings       = "=== Stratégie de trading ===";
 enum StrategyType {MA_Crossover, RSI_OSOB, FVG_Strategy};
 input StrategyType Strategy           = MA_Crossover;    // Choix de la stratégie
-
+input string  ecart9                  = "";
 //--- Paramètres pour la stratégie de croisement de MM
 input string  ma_settings             = "--- Paramètres des Moyennes Mobiles ---";
 input int     MA_Period1              = 50;              // Période de la première MM
@@ -93,44 +107,33 @@ input ENUM_MA_METHOD MA_Method        = MODE_SMA;        // Méthode de calcul d
 input ENUM_APPLIED_PRICE MA_Price     = PRICE_CLOSE;     // Prix appliqué pour les MM
 input color   couleurdoubleMM         = clrYellow;       // Couleur des deux MM
 input int     BougieMMaanalyser       = 1000;            // Nombre de bougies à utiliser 1000 minimum
-
+input string  ecart10                 = "";
 //--- Paramètres pour la stratégie RSI
 input string  rsi_settings            = "--- Paramètres RSI ---";
 input int     RSI_Period              = 14;              // Période du RSI
-
+input string  ecart11                = "";
 //--- Paramètres pour la stratégie FVG
 input string  fvg_settings            = "--- Paramètres FVG ---";
 input int     FVG_CandleLength        = 5;               // Longueur du rectangle en bougies
 input double  FVG_MinAmplitudePoints  = 50;              // Amplitude minimale du FVG en points
 input color   RectangleFVG            = clrRed;          // Couleur du rectangle FVG
-input string LabelBullish           = "FVG BISI";                 // Texte pour les FVG haussiers
-input string LabelBearish           = "FVG SIBI";                 // Texte pour les FVG baissiers
-input color  LabelColor             = clrWhite;                   // Couleur du texte des labels
-input color  FVGColorBullish        = clrGreen;                   // Couleur des FVG haussiers
-input color  FVGColorBearish        = clrRed;                     // Couleur des FVG baissiers
+input string LabelBullish             = "FVG BISI";                 // Texte pour les FVG haussiers
+input string LabelBearish             = "FVG SIBI";                 // Texte pour les FVG baissiers
+input color  LabelColor               = clrWhite;                   // Couleur du texte des labels
+input color  FVGColorBullish          = clrGreen;                   // Couleur des FVG haussiers
+input color  FVGColorBearish          = clrRed;                     // Couleur des FVG baissiers
 enum FVG_Action {Breakout, Rebound};
 input FVG_Action FVG_TradeAction      = Breakout;        // Action à entreprendre (Breakout ou Rebond)
-input int     BougieFVGaanalyser       = 1000;            // Nombre de bougies à utiliser 1000 minimum
-
-input string  symbol_settings         = "=== Symboles à trader ===";
-input bool    TradeAllForexPairs      = false;           // Trader toutes les paires Forex
-input bool    TradeAllIndices         = false;           // Trader tous les indices
-input string  CustomSymbols           = "";              // Liste personnalisée de symboles, séparés par des virgules
-
-input string  news_settings           = "=== Gestion des actualités ===";
-input bool    UseNewsFilter           = true;            // Utiliser le filtre des actualités
-input int     NewsFilterMinutesBefore = 60;              // Minutes avant les actualités pour éviter le trading
-input int     NewsFilterMinutesAfter  = 60;              // Minutes après les actualités pour éviter le trading
-input uint    NewsImportance          = 3;               // Niveau d'importance des actualités (1=Faible, 2=Moyen, 3=Fort)
-
+input int     BougieFVGaanalyser      = 1000;            // Nombre de bougies à utiliser 1000 minimum
+input string  ecart12                = "";
 input string  stoploss_settings       = "=== Paramètres de Stop Loss ===";
 enum StopType {SL_Classique, SL_Suiveur, GridTrading};
 input StopType StopLossType           = SL_Classique;    // Type de Stop Loss
-
+input string  ecart13                = "";
 input string  sl_classique_settings   = "--- Paramètres SL Classique ---";
 input double  StopLossCurrency        = 1.0;             // Stop Loss en devise (0 pour aucun SL)
 input double  TakeProfitCurrency      = 1.0;            // Take Profit en devise (0 pour aucun TP)
-
+input string  ecart14                = "";
 input string  sl_suiveur_settings     = "=== Paramètres du SL suiveur ===";
 input string  reglageslsuiveur        = "--- réglage SLsuiveur ---";
 input double  InpSeuilDeclenchement   = 1.5;             // Seuil de déclenchement en devise
@@ -138,7 +141,7 @@ input bool    InpActivationRespiration = true;           // Activation de la res
 input double  InpRespiration          = 1.0;             // Respiration pour le seuil de déclenchement en devise
 input double  InpRespirationSL        = 0.5;             // Respiration pour le SL suiveur en devise
 input double  InpSLsuiveur            = 30.0;            // Distance du SL suiveur en devises
-
+input string  ecart15                 = "";
 //--- Paramètres pour le Grid Trading
 input string  grid_settings           = "--- Paramètres du Grid Trading ---";
 input double  GridTakeProfitPoints    = 100;             // Take Profit en devise
@@ -232,7 +235,7 @@ int OnInit()
 {
   // Créer un indicateur RSI
    RSIHandle = iRSI(_Symbol, _Period, RSI_Period, PRICE_CLOSE);
-   
+
    // Ajouter une sous-fenêtre au graphique
    ChartSetInteger(0, CHART_WINDOWS_TOTAL, 2);
 
@@ -243,14 +246,14 @@ int OnInit()
         Print("Erreur lors de l'initialisation de Ichimoku pour ", Symbol());
         return INIT_FAILED;
     }
-    
+
     ArrayResize(Ichimoku_Handle, 1);
     Ichimoku_Handle[0] = ichimokuHandle;
-    
+
     // Initialisation des handles pour les moyennes mobiles
     ArrayResize(MA_Handle1, 1);
     ArrayResize(MA_Handle2, 1);
-    
+
     MA_Handle1[0] = iMA(Symbol(), TrendTimeframe, MA_Period1, 0, MA_Method, MA_Price);
     MA_Handle2[0] = iMA(Symbol(), TrendTimeframe, MA_Period2, 0, MA_Method, MA_Price);
 
@@ -261,6 +264,12 @@ int OnInit()
     }
 
     Print("Handles initialisés avec succès");
+
+    // Préparer la liste des symboles actifs au démarrage
+    BuildActiveSymbolList();
+    // Initialiser les handles des indicateurs pour tous les symboles actifs
+    InitializeIndicatorHandles();
+
     return INIT_SUCCEEDED;
 }
 
@@ -271,11 +280,11 @@ void OnDeinit(const int reason)
 {
   // Libérer le handle de l'indicateur
    IndicatorRelease(RSIHandle);
-   
+
    // Supprimer les objets
    ObjectDelete(0, "RSI_Ligne_70");
    ObjectDelete(0, "RSI_Ligne_30");
-   
+
    // Nettoyer les objets graphiques
    CleanupLabels(); // Appel à la fonction de nettoyage des labels
 
@@ -288,6 +297,10 @@ void OnDeinit(const int reason)
 
    // Afficher le message de déinitialisation
    Print("Expert Advisor déinitialisé");
+
+   // Libérer les handles des indicateurs multi-paires
+   ReleaseIndicatorHandles(); 
+
 }
 
 //+------------------------------------------------------------------+
@@ -295,19 +308,20 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   // Mettre à jour les positions existantes (gestion des stops, etc.)
-   UpdateExistingPositions();
+    // Mettre à jour la liste des symboles actifs à chaque tick
+    BuildActiveSymbolList();
+
    // Suppression indicateur selon strategie de signal
    switch(Strategy) {
       case MA_Crossover:
-         if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0) 
+         if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0)
          { // Si une sous-fenêtre existe
             DeleteSubWindowIfExists(); // Supprime la sous-fenêtre
          }
          SupprimerObjetsAutresStrategies(MA_Crossover);
          DisplayMAsignal(); // Affiche la MA
          break;
-      
+
       case RSI_OSOB:
          if(RSI_Period != previous_RSI_Period)
      {
@@ -326,10 +340,10 @@ void OnTick()
      }
 
          break;
-      
+
       case FVG_Strategy:
          SupprimerObjetsAutresStrategies(FVG_Strategy);
-         if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0) 
+         if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0)
          { // Si une sous-fenêtre existe
             DeleteSubWindowIfExists(); // Supprime la sous-fenêtre
          }
@@ -337,7 +351,7 @@ void OnTick()
          break;
    }
 
-   
+
    static int localcurrentTrendMethod = -1;  // ou toute autre valeur
 
    // Gérer la visibilité des indicateurs en fonction de UseTrendDetection
@@ -396,18 +410,60 @@ void OnTick()
       return;
    }
 
-   // Vérifier les actualités importantes
-   if (UseNewsFilter && IsThereNews(Symbol()))
+   //---  Début de la boucle ajoutée dans OnTick pour multi-paires ---
+   for (int i = 0; i < ArraySize(ActiveSymbols); i++)
    {
-      Print("Actualités importantes détectées, trading évité.");
-      return;
+      string symbol = ActiveSymbols[i];
+
+      // Vérifier si les conditions de marché sont favorables pour ce symbole
+      if (!IsMarketConditionsSuitableForSymbol(symbol)) // <--- Nouvelle fonction (étape 4)
+      {
+         Print("Conditions de marché non favorables pour ", symbol);
+         continue; // Passer au symbole suivant
+      }
+
+      // Vérifier les actualités importantes pour ce symbole
+      if (UseNewsFilter && IsThereNews(symbol)) // <--- Nouvelle fonction (étape 5)
+      {
+         Print("Actualités importantes détectées pour ", symbol, ", trading évité.");
+         return; // Passer au symbole suivant (RETURN, pas CONTINUE ici, car on ne veut pas trader d'autres symboles si news)
+      }
+
+      // Vérifier les signaux et ouvrir des positions si nécessaire pour ce symbole
+      CheckForNewSignals(symbol, i); // <--- Fonction CheckForNewSignals modifiée (étape 6)
    }
 
-   // Vérifier les signaux et ouvrir des positions si nécessaire
-   CheckForNewSignals();
-
+    // Mettre à jour les positions existantes (gestion des stops, etc.) -  **MODIFICATION: Appelée APRES la boucle des symboles**
+    UpdateExistingPositions(); // <--- Déplacé ici APRÈS la boucle multi-paires
 }
 
+bool IsMarketConditionsSuitableForSymbol(string symbol)
+{
+   // Vérifier si c'est le week-end (vérification globale, pas besoin par symbole)
+   if (IsWeekend())
+      return false;
+
+   // Vérifier le spread si le filtre est activé
+   if (UseMaxSpreadFilter)
+   {
+      long currentSpread = SymbolInfoInteger(symbol, SYMBOL_SPREAD);
+      if (currentSpread > MaxSpreadPoints)
+      {
+         Print("Spread trop élevé pour ", symbol, ": ", currentSpread);
+         return false;
+      }
+   }
+
+   // Vérifier si le trading est autorisé pour ce symbole
+   long tradeMode = SymbolInfoInteger(symbol, SYMBOL_TRADE_MODE);
+   if (tradeMode == SYMBOL_TRADE_MODE_DISABLED)
+      {
+      Print("Trading non autorisé sur le symbole ", symbol);
+      return false;
+      }
+
+   return true; // Conditions de marché OK pour ce symbole
+}
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier si les conditions de marché sont bonnes    |
 //+------------------------------------------------------------------+
@@ -477,7 +533,7 @@ void BuildActiveSymbolList()
    ArrayResize(ActiveSymbols, 0);
 
    // Si TradeAllForexPairs et TradeAllIndices sont false, trader seulement le symbole actuel
-   if (!TradeAllForexPairs && !TradeAllIndices && StringLen(CustomSymbols) == 0)
+   if (!TradeAllForexPairs && !TradeAllIndices)
    {
       string currentSymbol = Symbol();
       if (SymbolInfoInteger(currentSymbol, SYMBOL_SELECT))
@@ -493,13 +549,12 @@ void BuildActiveSymbolList()
 
    // Liste des paires Forex principales
    string ForexPairs[] = {
-      "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "AUDUSD", "USDCAD",
-      "NZDUSD", "EURGBP", "EURJPY", "GBPJPY"
+      "USDJPY", "USDCAD", "USDCHF", "EURUSD", "EURGBP", "EURAUD", "EURJPY", "EURCAD", "EURCHF", "EURNZD", "GBPUSD", "GBPNZD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPAUD", "CADCHF", "CADJPY", "CHFJPY", "AUDCAD", "AUDCHF", "AUDUSD", "AUDJPY", "AUDNZD", "NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"
    };
 
    // Liste des indices
    string Indices[] = {
-      "US30", "US500", "USTEC", "GER40", "UK100", "FRA40"
+      "Esp35", "Euro50", "Ger40", "Fra40", "UK100" 
    };
 
    // Ajouter les paires Forex si activé
@@ -526,31 +581,6 @@ void BuildActiveSymbolList()
       }
    }
 
-   // Ajouter les symboles personnalisés
-   if (StringLen(CustomSymbols) > 0)
-   {
-      string customSymbolsArray[];
-      StringSplit(CustomSymbols, ',', customSymbolsArray);
-
-      for (int i = 0; i < ArraySize(customSymbolsArray); i++)
-      {
-         string symbol = customSymbolsArray[i];
-         StringTrimRight(symbol);
-         StringTrimLeft(symbol);
-
-         if (StringLen(symbol) == 0)
-         {
-            Print("Erreur: Symbole vide dans CustomSymbols.");
-            continue;
-         }
-
-         if (SymbolInfoInteger(symbol, SYMBOL_SELECT))
-            AddSymbolToList(symbol);
-         else
-            Print("Erreur: Le symbole personnalisé ", symbol, " n'existe pas ou n'est pas disponible.");
-      }
-   }
-
    // Vérifier si au moins un symbole a été ajouté
    if (ArraySize(ActiveSymbols) == 0)
    {
@@ -574,7 +604,7 @@ void AddSymbolToList(string symbol)
 //+------------------------------------------------------------------+
 void InitializeIndicatorHandles()
 {
-   if (!TradeAllForexPairs && !TradeAllIndices && StringLen(CustomSymbols) == 0)
+   if (!TradeAllForexPairs && !TradeAllIndices)
    {
       string symbol = Symbol();
 
@@ -679,7 +709,7 @@ void InitializeIndicatorHandles()
 //+------------------------------------------------------------------+
 void ReleaseIndicatorHandles()
 {
-   if (!TradeAllForexPairs && !TradeAllIndices && StringLen(CustomSymbols) == 0)
+   if (!TradeAllForexPairs && !TradeAllIndices)
    {
       if (MA_Handle1[0] != INVALID_HANDLE) IndicatorRelease(MA_Handle1[0]);
       if (MA_Handle2[0] != INVALID_HANDLE) IndicatorRelease(MA_Handle2[0]);
@@ -699,17 +729,17 @@ void ReleaseIndicatorHandles()
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier les nouveaux signaux                      |
 //+------------------------------------------------------------------+
-void CheckForNewSignals()
+void CheckForNewSignals(string symbol, int symbolIndex)
 {
    // Vérifier les conditions de trading
-   if (!IsMarketConditionsSuitable())
+   if (!IsMarketConditionsSuitableForSymbol(symbol))
    {
-      Print("Conditions de marché non favorables.");
+      Print("Conditions de marché non favorables pour ", symbol);
       return;
    }
 
    // Vérifier les actualités importantes
-   if (UseNewsFilter && IsThereNews(Symbol()))
+   if (UseNewsFilter && IsThereNews(symbol))
    {
       Print("Actualités importantes détectées, trading évité.");
       return;
@@ -722,8 +752,8 @@ void CheckForNewSignals()
    if (UseTrendDetection)
    {
       // Obtenir la tendance
-      trend = GetMarketTrend(Symbol(), 0);
-      
+      trend = GetMarketTrend(symbol, symbolIndex);
+
    }
    else
    {
@@ -731,29 +761,34 @@ void CheckForNewSignals()
    }
 
    // Vérifier le signal selon la stratégie choisie
-   CrossSignal signal = CheckStrategySignal(Symbol(), 0);
+   CrossSignal signal = CheckStrategySignal(symbol, symbolIndex);
 
    if (signal != Aucun)
    {
       Print("Signal détecté : ", EnumToString(signal));
 
-      // Calculer le volume
-      double volume = CalculateVolume(Symbol());
-      if (volume <= 0)
-      {
-         Print("Volume invalide pour ", Symbol());
-         return;
-      }
+double volume = CalculateVolume(symbol);
 
+if (LotSizeType == LotFixe && volume > FixedLotSize)
+{
+   Print("Volume calculé (", volume, ") supérieur à FixedLotSize (", FixedLotSize, ") pour ", symbol, ". Ordre annulé.");
+   return;
+}
+
+if (volume <= 0)
+{
+   Print("Volume invalide (", volume, ") pour ", symbol);
+   return;
+}
       // Vérifier la tendance avant de prendre des décisions d'achat ou de vente
       if (signal == Achat && trend != TrendBaissiere)
       {
          // Ouvrir la position avec Stop Loss Classique
          if (StopLossType == SL_Classique)
          {
-            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+            if (OpenPositionWithClassicSL(symbol, signal, volume))
             {
-               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+               Print("Position ouverte avec Stop Loss Classique pour ", symbol);
             }
          }
          // Ajoutez d'autres types de Stop Loss ici si nécessaire
@@ -763,9 +798,9 @@ void CheckForNewSignals()
          // Ouvrir la position avec Stop Loss Classique
          if (StopLossType == SL_Classique)
          {
-            if (OpenPositionWithClassicSL(Symbol(), signal, volume))
+            if (OpenPositionWithClassicSL(symbol, signal, volume))
             {
-               Print("Position ouverte avec Stop Loss Classique pour ", Symbol());
+               Print("Position ouverte avec Stop Loss Classique pour ", symbol);
             }
          }
          // Ajoutez d'autres types de Stop Loss ici si nécessaire
@@ -1365,50 +1400,86 @@ void SupprimerObjetsFVG()
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier le signal FVG                             |
 //+------------------------------------------------------------------+
+// Variables globales pour suivre l'état du FVG
+bool isTradeTaken = false; // Indique si une position a déjà été prise pour ce FVG
+datetime fvgStartTime;     // Heure de début du FVG
+
+// Déclaration de l'énumération CrossSignalFVG
+enum CrossSignalFVG
+{
+    None = 0,
+    Buy,
+    Sell
+};
+
 CrossSignal CheckFVGSignal(string symbol)
 {
-   MqlRates rates[];
-   ArraySetAsSeries(rates, true);
+    // Calcul du FVG
+    double highPrev = iHigh(symbol, 0, 1); // High de la bougie précédente
+    double lowPrev = iLow(symbol, 0, 1);   // Low de la bougie précédente
+    double amplitude = MathAbs(highPrev - lowPrev); // Amplitude du FVG
 
-   if (CopyRates(symbol, _Period, 0, FVG_CandleLength + 2, rates) <= 0)
-   {
-      Print("Erreur lors de la copie des données de prix pour ", symbol);
-      return Aucun;
-   }
+    // Vérifier si un FVG est détecté
+    bool isFVG = amplitude >= FVG_MinAmplitudePoints * Point;
 
-   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
-   double currentPrice = SymbolInfoDouble(symbol, SYMBOL_BID);
+    if (isFVG && !isTradeTaken) // Si un FVG est détecté et aucune position n'a été prise
+    {
+        // Enregistrer l'heure de début du FVG
+        fvgStartTime = iTime(symbol, 0, 0);
 
-   // Détecter les Fair Value Gaps
-   for (int i = 1; i < FVG_CandleLength; i++)
-   {
-      // FVG haussier
-      if (rates[i].low > rates[i - 1].high)
-      {
-         double gapSize = rates[i].low - rates[i - 1].high;
-         if (gapSize >= FVG_MinAmplitudePoints * point)
-         {
-            if (FVG_TradeAction == Breakout && currentPrice > rates[i].high)
-               return Achat;
-            else if (FVG_TradeAction == Rebound && currentPrice < rates[i].low)
-               return Vente;
-         }
-      }
-      // FVG baissier
-      else if (rates[i].high < rates[i - 1].low)
-      {
-         double gapSize = rates[i - 1].low - rates[i].high;
-         if (gapSize >= FVG_MinAmplitudePoints * point)
-         {
-            if (FVG_TradeAction == Breakout && currentPrice < rates[i].low)
-               return Vente;
-            else if (FVG_TradeAction == Rebound && currentPrice > rates[i].high)
-               return Achat;
-         }
-      }
-   }
+        // Stratégie de Breakout
+        if (FVG_TradeAction == "Breakout")
+        {
+            // Déterminer si le FVG est haussier (BISI) ou baissier (SIBI)
+            bool isBullishFVG = (iClose(symbol, 0, 1) > iOpen(symbol, 0, 1)); // Bougie précédente haussière
+            bool isBearishFVG = (iClose(symbol, 0, 1) < iOpen(symbol, 0, 1)); // Bougie précédente baissière
 
-   return Aucun;
+            // Vérifier la clôture de la bougie actuelle
+            double currentClose = iClose(symbol, 0, 0); // Clôture de la bougie actuelle
+
+            // Breakout haussier (BISI)
+            if (isBullishFVG && currentClose > highPrev)
+            {
+                isTradeTaken = true; // Marquer qu'une position a été prise
+                return CrossSignalFVG::Buy; // Prendre une position à l'achat
+            }
+            // Breakout baissier (SIBI)
+            else if (isBearishFVG && currentClose < lowPrev)
+            {
+                isTradeTaken = true; // Marquer qu'une position a été prise
+                return CrossSignalFVG::Sell; // Prendre une position à la vente
+            }
+        }
+        // Stratégie de Rebond
+        else if (FVG_TradeAction == "Rebond")
+        {
+            // Vérifier si le prix rebondit à l'intérieur du FVG
+            double currentClose = iClose(symbol, 0, 0); // Clôture de la bougie actuelle
+            double currentLow = iLow(symbol, 0, 0);     // Low de la bougie actuelle
+            double currentHigh = iHigh(symbol, 0, 0);   // High de la bougie actuelle
+
+            // Rebond haussier (prix touche le bas du FVG et remonte)
+            if (currentLow <= lowPrev && currentClose > lowPrev)
+            {
+                isTradeTaken = true; // Marquer qu'une position a été prise
+                return CrossSignalFVG::Buy; // Prendre une position à l'achat
+            }
+            // Rebond baissier (prix touche le haut du FVG et redescend)
+            else if (currentHigh >= highPrev && currentClose < highPrev)
+            {
+                isTradeTaken = true; // Marquer qu'une position a été prise
+                return CrossSignalFVG::Sell; // Prendre une position à la vente
+            }
+        }
+    }
+
+    // Vérifier si le FVG a expiré (dépassé FVG_CandleLength bougies)
+    if (isTradeTaken && iBarShift(symbol, 0, fvgStartTime) >= FVG_CandleLength)
+    {
+        isTradeTaken = false; // Réinitialiser pour le prochain FVG
+    }
+
+    return CrossSignalFVG::None; // Aucun signal détecté
 }
 
 //+------------------------------------------------------------------+
@@ -2164,6 +2235,13 @@ double CalculateVolume(string symbol)
    double lotStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
    lotSize = NormalizeDouble(MathRound(lotSize / lotStep) * lotStep, 2);
 
+Print("--- Informations du symbole ", symbol, " ---");
+Print("SYMBOL_VOLUME_MIN: ", SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN));
+Print("SYMBOL_VOLUME_MAX: ", SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX));
+Print("SYMBOL_VOLUME_STEP: ", SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP));
+Print("FixedLotSize: ", FixedLotSize);  // Pour vérifier
+Print("--- Fin informations ---");
+
    // Afficher dans le journal pour le débogage
    Print("Lot calculé pour ", symbol, " : ", lotSize, " (Méthode : ", EnumToString(LotSizeType), ")");
 
@@ -2190,21 +2268,23 @@ void SendNotifications(string symbol, ENUM_ORDER_TYPE orderType, double volume, 
    double slPoints = CalculatePriceDifferenceInPoints(symbol, price, sl);
    double tpPoints = CalculatePriceDifferenceInPoints(symbol, price, tp);
 
-   string message = StringFormat("🔔 %s: Nouvelle position %s ouverte\nVolume: %.2f\nPrix: %.5f\nSL: %.2f %s (%.2f%%, %.2f points)\nTP: %.2f %s (%.2f%%, %.2f points)", 
-                                 symbol, direction, volume, price, 
+   string message = StringFormat("🔔 %s: Nouvelle position %s ouverte\nVolume: %.2f\nPrix: %.5f\nSL: %.2f %s (%.2f%%, %.2f points)\nTP: %.2f %s (%.2f%%, %.2f points)",
+                                 symbol, direction, volume, price,
                                  slInCurrency, AccountInfoString(ACCOUNT_CURRENCY), slPercentage, slPoints,
                                  tpInCurrency, AccountInfoString(ACCOUNT_CURRENCY), tpPercentage, tpPoints);
 
    // Notification push sur le mobile
-   if (!SendNotification(message))
-      Print("Erreur lors de l'envoi de la notification push: ", GetLastError());
+   if (EnablePushNotifications)
+   {
+      if (!SendNotification(message))
+          Print("Erreur lors de l'envoi de la notification push: ", GetLastError());
+   }
 
-   // Notification sonore
-   PlaySound("alert.wav");
-
-   // Email notification (optionnel)
-   if (!SendMail("Signal de Trading", message))
-      Print("Erreur lors de l'envoi de l'email: ", GetLastError());
+   // Alerte dans une fenêtre MT5
+   if (EnableAlerts)
+   {
+       Alert(message);
+   }
 
    // Afficher dans le journal
    Print(message);
@@ -2709,6 +2789,7 @@ void UpdateSLDisplay(bool isActivated, double seuil_activation = 0.0, double seu
       }
    }
 }
+
 //+------------------------------------------------------------------+
 //| Fonction pour ajuster les valeurs de respiration et seuils       |
 //+------------------------------------------------------------------+
@@ -2977,19 +3058,6 @@ void CalculateClassicSLTP(string symbol, ENUM_ORDER_TYPE orderType, double &sl, 
    // Convertir les niveaux de SL et TP en pourcentage de l'équité
    slPercentage = ConvertToEquityPercentage(slCurrency);
    tpPercentage = ConvertToEquityPercentage(tpCurrency);
-
-   // Afficher les informations pour le débogage
-   Print("SL classique calculé :");
-   Print("SL en pips : ", slPoints);
-   Print("SL en devise : ", slCurrency, " ", AccountInfoString(ACCOUNT_CURRENCY));
-   Print("SL en pourcentage de l'équité : ", slPercentage, "%");
-   Print("SL en prix : ", sl);
-
-   Print("TP classique calculé :");
-   Print("TP en pips : ", tpPoints);
-   Print("TP en devise : ", tpCurrency, " ", AccountInfoString(ACCOUNT_CURRENCY));
-   Print("TP en pourcentage de l'équité : ", tpPercentage, "%");
-   Print("TP en prix : ", tp);
 }
 
 //+------------------------------------------------------------------+
@@ -3315,7 +3383,7 @@ bool OpenPositionWithGridTrading(string symbol, CrossSignal signal, double volum
 //+------------------------------------------------------------------+
 bool OpenPositionWithTrailingSL(string symbol, CrossSignal signal, double volume)
 {
-   if (IsPositionOpen(symbol))
+   if (IsPositionOpen(symbol) == true)
    {
       Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
       return false;
@@ -3338,7 +3406,7 @@ bool OpenPositionWithTrailingSL(string symbol, CrossSignal signal, double volume
 //+------------------------------------------------------------------+
 bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
 {
-   if (PositionSelect(_Symbol) == true)
+   if (IsPositionOpen(symbol) == true)
    {
       Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
       return false;
