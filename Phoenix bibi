@@ -191,7 +191,7 @@ int lastBougieTendanalyserEffective = -1;
 // Variable globale pour stocker la dernière valeur utilisée et détecter les changements
 int lastBougieIchimokuAnalyserEffective = -1;
 // Variable globale pour stocker la dernière valeur utilisée et détecter les changements
-int lastBougieFVGaanalyserEffective = -1;
+int lastBougieFVGaanalyserEffective = 0;
 
 //+------------------------------------------------------------------+
 //| Fonction pour cacher les indicateurs tendance                    |
@@ -1247,95 +1247,155 @@ CrossSignal CheckMACrossover(string symbol, int index = 0)
    return Aucun;
 }
 
-//+------------------------------------------------------------------+
-//| Fonction pour afficher les FVG de signal                         |
-//+------------------------------------------------------------------+
+//---------------------------------------------------------------------------
+// Fonction de vérification du changement de paramètres 
+// (les valeurs précédentes sont stockées dans des variables statiques)
+//---------------------------------------------------------------------------
+bool CheckParameterChange()
+{
+   static int    prev_FVG_CandleLength       = FVG_CandleLength;
+   static double prev_FVG_MinAmplitudePoints = FVG_MinAmplitudePoints;
+   static color  prev_RectangleFVG           = RectangleFVG;
+   static string prev_LabelBullish           = LabelBullish;
+   static string prev_LabelBearish           = LabelBearish;
+   static color  prev_LabelColor             = LabelColor;
+   static color  prev_FVGColorBullish        = FVGColorBullish;
+   static color  prev_FVGColorBearish        = FVGColorBearish;
+   static FVG_Action prev_FVG_TradeAction    = FVG_TradeAction;
+   static int    prev_BougieFVGaanalyser     = BougieFVGaanalyser;
+   
+   if(prev_FVG_CandleLength       != FVG_CandleLength       ||
+      prev_FVG_MinAmplitudePoints != FVG_MinAmplitudePoints ||
+      prev_RectangleFVG           != RectangleFVG           ||
+      prev_LabelBullish           != LabelBullish           ||
+      prev_LabelBearish           != LabelBearish           ||
+      prev_LabelColor             != LabelColor             ||
+      prev_FVGColorBullish        != FVGColorBullish        ||
+      prev_FVGColorBearish        != FVGColorBearish        ||
+      prev_FVG_TradeAction        != FVG_TradeAction        ||
+      prev_BougieFVGaanalyser     != BougieFVGaanalyser)
+   {
+      // Mettre à jour les valeurs enregistrées
+      prev_FVG_CandleLength       = FVG_CandleLength;
+      prev_FVG_MinAmplitudePoints = FVG_MinAmplitudePoints;
+      prev_RectangleFVG           = RectangleFVG;
+      prev_LabelBullish           = LabelBullish;
+      prev_LabelBearish           = LabelBearish;
+      prev_LabelColor             = LabelColor;
+      prev_FVGColorBullish        = FVGColorBullish;
+      prev_FVGColorBearish        = FVGColorBearish;
+      prev_FVG_TradeAction        = FVG_TradeAction;
+      prev_BougieFVGaanalyser     = BougieFVGaanalyser;
+      return true;
+   }
+   return false;
+}
+
+//---------------------------------------------------------------------------
+// Fonction pour afficher les FVG de signal
+//---------------------------------------------------------------------------
 void DisplayFVGsignal()
 {
-    // Récupérer le symbole et timeframe courants
-    string symbol = Symbol();
+    string symbol   = Symbol();
     ENUM_TIMEFRAMES timeframe = PERIOD_CURRENT;
+    int totalBars   = Bars(symbol, timeframe);
 
-    // Obtenir le nombre total de barres disponibles
-    int totalBars = Bars(symbol, timeframe);
-
-    // Calculer la valeur effective (bornée entre 1000 et totalBars)
-    int bougieFVGaanalyserEffective = BougieFVGaanalyser;
-    if (bougieFVGaanalyserEffective < 1000)
-        bougieFVGaanalyserEffective = 1000;
-    else if (bougieFVGaanalyserEffective > totalBars)
-        bougieFVGaanalyserEffective = totalBars;
-
-    // Si la valeur a changé, on supprime les anciens objets FVG
-    if (bougieFVGaanalyserEffective != lastBougieFVGaanalyserEffective)
+    // Vérifier si l'un des paramètres a changé
+    if(CheckParameterChange())
     {
-        SupprimerObjetsFVG();
-        lastBougieFVGaanalyserEffective = bougieFVGaanalyserEffective;
+         Print("Modification des paramètres detectée, suppression des FVG existants...");
+         SupprimerObjetsFVG();
+         // On remet à zéro la variable de contrôle des bougies analysées
+         lastBougieFVGaanalyserEffective = 0;
     }
 
-    // Parcourir les bougies pour détecter les FVG
-    double _low = iLow(symbol, timeframe, 0);
+    // Calculer le nombre effectif de bougies à analyser
+    int bougieFVGaanalyserEffective = BougieFVGaanalyser;
+    if(bougieFVGaanalyserEffective < 1000)
+         bougieFVGaanalyserEffective = 1000;
+    else if(bougieFVGaanalyserEffective > totalBars)
+         bougieFVGaanalyserEffective = totalBars;
+
+    // Si le nombre de bougies à analyser a changé par rapport à la dernière exécution, 
+    // supprimer les anciens objets FVG
+    if(bougieFVGaanalyserEffective != lastBougieFVGaanalyserEffective)
+    {
+         SupprimerObjetsFVG();
+         lastBougieFVGaanalyserEffective = bougieFVGaanalyserEffective;
+    }
+
+    double _low  = iLow(symbol, timeframe, 0);
     double _high = iHigh(symbol, timeframe, 0);
     int c_bull = 0;
     int c_bear = 0;
+    
     for (int i = 2; i < bougieFVGaanalyserEffective; i++)
     {
         // Récupérer les données des trois bougies nécessaires.
-        double high1 = iHigh(symbol, timeframe, i + 2);
-        double low1  = iLow(symbol, timeframe, i + 2);
-        double high2 = iHigh(symbol, timeframe, i + 1);
-        double low2  = iLow(symbol, timeframe, i + 1);
-        double high3 = iHigh(symbol, timeframe, i);
-        double low3  = iLow(symbol, timeframe, i);
-        double open1 = iOpen(symbol, timeframe, i + 2);
-        double open2 = iOpen(symbol, timeframe, i + 1);
-        double open3 = iOpen(symbol, timeframe, i);
+        double high1  = iHigh(symbol, timeframe, i + 2);
+        double low1   = iLow(symbol, timeframe, i + 2);
+        double high2  = iHigh(symbol, timeframe, i + 1);
+        double low2   = iLow(symbol, timeframe, i + 1);
+        double high3  = iHigh(symbol, timeframe, i);
+        double low3   = iLow(symbol, timeframe, i);
+        double open1  = iOpen(symbol, timeframe, i + 2);
+        double open2  = iOpen(symbol, timeframe, i + 1);
+        double open3  = iOpen(symbol, timeframe, i);
         double close1 = iClose(symbol, timeframe, i + 2);
         double close2 = iClose(symbol, timeframe, i + 1);
         double close3 = iClose(symbol, timeframe, i);
 
-        // Calcul de l'amplitude en points
+        // Calcul de l'amplitude en points pour chaque type de FVG
         double fvgAmplitudeBullish = MathAbs(low3 - high1) / _Point;
         double fvgAmplitudeBearish = MathAbs(high3 - low1) / _Point;
 
+        // Vérifier la couleur de la bougie (sur la bougie intermédiaire)
+        bool isGreenCandle = (open2 < close2);
+        bool isRedCandle   = !isGreenCandle;
+
         // Vérifier les conditions pour un FVG haussier
-        if (low3 > high1 && fvgAmplitudeBullish >= FVG_MinAmplitudePoints * (Symbol() == "XAUUSD" ? 0.01 : 1) && IsGreenCandleInDisplayFVGsignal(open2, close2) && high1 < low3)
+        if(low3 > high1 &&
+           fvgAmplitudeBullish >= FVG_MinAmplitudePoints * ((symbol=="XAUUSD") ? 0.01 : 1) &&
+           isGreenCandle && high1 < low3)
         {
-            // Paramètres pour FVG haussier
             string fvgName = "FVG_Bullish_" + IntegerToString(i);
             double levelHigh = high1;
-            double levelLow = low3;
-            color zoneColor = FVGColorBullish;
+            double levelLow  = low3;
+            color zoneColor  = FVGColorBullish;
             string labelText = LabelBullish;
 
-            // Dessiner la zone FVG
             int endBarIndex = i - FVG_CandleLength;
-            if (endBarIndex < 0)
+            if(endBarIndex < 0)
                 endBarIndex = 0;
-            CreateObjectInDisplayFVGsignal(fvgName, zoneColor, iTime(symbol, timeframe, i + 2), iTime(symbol, timeframe, endBarIndex), levelLow, levelHigh, labelText);
+            CreateObjectInDisplayFVGsignal(fvgName, zoneColor, 
+                                           iTime(symbol, timeframe, i + 2), 
+                                           iTime(symbol, timeframe, endBarIndex), 
+                                           levelLow, levelHigh, labelText);
             c_bull++;
         }
-
         // Vérifier les conditions pour un FVG baissier
-        else if (high3 < low1 && fvgAmplitudeBearish >= FVG_MinAmplitudePoints * (Symbol() == "XAUUSD" ? 0.01 : 1) && IsRedCandleInDisplayFVGsignal(open2, close2) && low1 > high3)
+        else if(high3 < low1 &&
+                fvgAmplitudeBearish >= FVG_MinAmplitudePoints * ((symbol=="XAUUSD") ? 0.01 : 1) &&
+                isRedCandle && low1 > high3)
         {
-            // Paramètres pour FVG baissier
             string fvgName = "FVG_Bearish_" + IntegerToString(i);
             double levelHigh = low1;
-            double levelLow = high3;
-            color zoneColor = FVGColorBearish;
+            double levelLow  = high3;
+            color zoneColor  = FVGColorBearish;
             string labelText = LabelBearish;
 
-            // Dessiner la zone FVG
             int endBarIndex = i - FVG_CandleLength;
-            if (endBarIndex < 0)
+            if(endBarIndex < 0)
                 endBarIndex = 0;
-            CreateObjectInDisplayFVGsignal(fvgName, zoneColor, iTime(symbol, timeframe, i + 2), iTime(symbol, timeframe, endBarIndex), levelLow, levelHigh, labelText);
+            CreateObjectInDisplayFVGsignal(fvgName, zoneColor, 
+                                           iTime(symbol, timeframe, i + 2), 
+                                           iTime(symbol, timeframe, endBarIndex), 
+                                           levelLow, levelHigh, labelText);
             c_bear++;
         }
 
-        _low = _low < low1 ? _low : low1;
-        _high = _high > high1 ? _high : high1;
+        _low  = (_low  < low1)  ? _low  : low1;
+        _high = (_high > high1) ? _high : high1;
     }
 }
 
@@ -1372,7 +1432,11 @@ void CreateObjectInDisplayFVGsignal(string name, color clrColor, datetime time1,
     string textName = "Text_" + name;
     if (ObjectFind(0, textName) == -1)
     {
-        if (!ObjectCreate(0, textName, OBJ_TEXT, 0, (time1 + time2) / 2, (high + low) / 2))
+        // Calculer la position du texte au milieu du rectangle
+        datetime midTime = (time1 + time2) / 2;
+        double midPrice = (high + low) / 2;
+
+        if (!ObjectCreate(0, textName, OBJ_TEXT, 0, midTime, midPrice))
         {
             Print("Erreur lors de la création de l'objet texte ", textName, " : ", GetLastError());
             return;
@@ -1384,40 +1448,22 @@ void CreateObjectInDisplayFVGsignal(string name, color clrColor, datetime time1,
         ObjectSetInteger(0, textName, OBJPROP_FONTSIZE, 10);
         ObjectSetString(0, textName, OBJPROP_FONT, "Arial");
         ObjectSetInteger(0, textName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-        ObjectSetInteger(0, textName, OBJPROP_BACK, true);                  // Envoyer à l'arrière-plan
+        ObjectSetInteger(0, textName, OBJPROP_BACK, true);                  // S'assurer que le texte est au premier plan
     }
     else
     {
+        // Calculer la position du texte au milieu du rectangle
+        datetime midTime = (time1 + time2) / 2;
+        double midPrice = (high + low) / 2;
+
         // Mettre à jour les propriétés du texte
         ObjectSetString(0, textName, OBJPROP_TEXT, labelText);
         ObjectSetInteger(0, textName, OBJPROP_COLOR, LabelColor);
         ObjectSetInteger(0, textName, OBJPROP_FONTSIZE, 10);
         ObjectSetString(0, textName, OBJPROP_FONT, "Arial");
         ObjectSetInteger(0, textName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-        ObjectSetInteger(0, textName, OBJPROP_BACK, true);                  // Envoyer à l'arrière-plan
-        ObjectMove(0, textName, 0, (time1 + time2) / 2, (high + low) / 2);
-    }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour créer un objet FVG                                 |
-//+------------------------------------------------------------------+
-void CreateObject(string name, color clrColor, datetime time1, datetime time2, double low, double high)
-{
-    // Vérifier si l'objet rectangle existe déjà
-    if (ObjectFind(0, name) == -1)
-    {
-        // Créer un rectangle
-        if (!ObjectCreate(0, name, OBJ_RECTANGLE, 0, time1, low, time2, high))
-        {
-            Print("Erreur lors de la création de l'objet ", name, " : ", GetLastError());
-            return;
-        }
-
-        // Définir les propriétés du rectangle
-        ObjectSetInteger(0, name, OBJPROP_COLOR, clrColor);
-        ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
-        ObjectSetInteger(0, name, OBJPROP_FILL, true);
+        ObjectSetInteger(0, textName, OBJPROP_BACK, true);                  // S'assurer que le texte est au premier plan
+        ObjectMove(0, textName, 0, midTime, midPrice);
     }
 }
 
