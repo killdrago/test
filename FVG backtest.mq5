@@ -101,8 +101,8 @@ input StrategyType Strategy           = MA_Crossover;    // Choix de la stratég
 input string  ecart9                  = "";
 //--- Paramètres pour la stratégie de croisement de MM
 input string  ma_settings             = "--- Paramètres des Moyennes Mobiles ---";
-input int     MA_Period1              = 50;              // Période de la première MM
-input int     MA_Period2              = 200;             // Période de la deuxième MM
+input int     MA_Period1              = 20;              // MM Rapide
+input int     MA_Period2              = 50;              // MM Lente
 input ENUM_MA_METHOD MA_Method        = MODE_SMA;        // Méthode de calcul des MM
 input ENUM_APPLIED_PRICE MA_Price     = PRICE_CLOSE;     // Prix appliqué pour les MM
 input color   couleurdoubleMM         = clrYellow;       // Couleur des deux MM
@@ -117,11 +117,11 @@ input string  fvg_settings            = "--- Paramètres FVG ---";
 input int     FVG_CandleLength        = 5;               // Longueur du rectangle en bougies
 input double  FVG_MinAmplitudePoints  = 50;              // Amplitude minimale du FVG en points
 input color   RectangleFVG            = clrRed;          // Couleur du rectangle FVG
-input string LabelBullish             = "FVG BISI";                 // Texte pour les FVG haussiers
-input string LabelBearish             = "FVG SIBI";                 // Texte pour les FVG baissiers
-input color  LabelColor               = clrWhite;                   // Couleur du texte des labels
-input color  FVGColorBullish          = clrGreen;                   // Couleur des FVG haussiers
-input color  FVGColorBearish          = clrRed;                     // Couleur des FVG baissiers
+input string LabelBullish             = "FVG BISI";      // Texte pour les FVG haussiers
+input string LabelBearish             = "FVG SIBI";      // Texte pour les FVG baissiers
+input color  LabelColor               = clrWhite;        // Couleur du texte des labels
+input color  FVGColorBullish          = clrGreen;        // Couleur des FVG haussiers
+input color  FVGColorBearish          = clrRed;          // Couleur des FVG baissiers
 enum FVG_Action {Breakout, Rebound};
 input FVG_Action FVG_TradeAction      = Breakout;        // Action à entreprendre (Breakout ou Rebond)
 input int     BougieFVGaanalyser      = 1000;            // Nombre de bougies à utiliser 1000 minimum
@@ -132,7 +132,7 @@ input StopType StopLossType           = SL_Classique;    // Type de Stop Loss
 input string  ecart13                = "";
 input string  sl_classique_settings   = "--- Paramètres SL Classique ---";
 input double  StopLossCurrency        = 1.0;             // Stop Loss en devise (0 pour aucun SL)
-input double  TakeProfitCurrency      = 1.0;            // Take Profit en devise (0 pour aucun TP)
+input double  TakeProfitCurrency      = 1.0;             // Take Profit en devise (0 pour aucun TP)
 input string  ecart14                = "";
 input string  sl_suiveur_settings     = "=== Paramètres du SL suiveur ===";
 input string  reglageslsuiveur        = "--- réglage SLsuiveur ---";
@@ -167,6 +167,11 @@ string        ActiveSymbols[];          // Tableau des symboles actifs
 bool          isNewMinute       = false;
 datetime      lastMinuteChecked = 0;
 ulong         current_ticket    = 0;    // Pour suivre le ticket de la position courante
+datetime lastBarTime = 0; // Heure de la dernière bougie traitée
+// Variables globales pour suivre l'état du FVG
+bool isTradeTaken = false; // Indique si une position a déjà été prise pour ce FVG
+datetime fvgStartTime;     // Heure de début du FVG
+datetime lastTradedFVGTime = 0; // FVG trader ou pas
 
 //--- Variables pour les handles des indicateurs
 int           MA_Handle1[];      // Handles pour les moyennes mobiles
@@ -191,7 +196,7 @@ int lastBougieTendanalyserEffective = -1;
 // Variable globale pour stocker la dernière valeur utilisée et détecter les changements
 int lastBougieIchimokuAnalyserEffective = -1;
 // Variable globale pour stocker la dernière valeur utilisée et détecter les changements
-int lastBougieFVGaanalyserEffective = -1;
+int lastBougieFVGaanalyserEffective = 0;
 
 //+------------------------------------------------------------------+
 //| Fonction pour cacher les indicateurs tendance                    |
@@ -233,7 +238,9 @@ void RemoveAllIndicators()
 //+------------------------------------------------------------------+
 int OnInit()
 {
-  // Créer un indicateur RSI
+   // Initialiser la variable lastBarTime avec l'heure de la dernière bougie pour le FVG
+    lastBarTime = iTime(Symbol(), Period(), 0);
+   // Créer un indicateur RSI
    RSIHandle = iRSI(_Symbol, _Period, RSI_Period, PRICE_CLOSE);
 
    // Ajouter une sous-fenêtre au graphique
@@ -342,13 +349,30 @@ void OnTick()
          break;
 
       case FVG_Strategy:
-         SupprimerObjetsAutresStrategies(FVG_Strategy);
+      {
+           SupprimerObjetsAutresStrategies(FVG_Strategy);
+                 DisplayFVGsignal(); // Affiche le FVG
          if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0)
          { // Si une sous-fenêtre existe
             DeleteSubWindowIfExists(); // Supprime la sous-fenêtre
          }
-         DisplayFVGsignal(); // Affiche le FVG
+         
+          // Récupérer le timeframe actuel du graphique
+         ENUM_TIMEFRAMES currentTF = (ENUM_TIMEFRAMES)Period();
+
+         // Vérifier si une nouvelle bougie s'est formée
+         datetime currentBarTime = iTime(Symbol(), currentTF, 0);
+        if (currentBarTime != lastBarTime)
+          {
+          // Suppresion des FVG pour les recree apres
+          SupprimerObjetsFVG();
+          // Mettre à jour la variable lastBarTime
+          lastBarTime = currentBarTime;
+          // Appeler la fonction principale pour afficher les FVG
+          DisplayFVGsignal(); // Affiche le FVG
+          }
          break;
+     }
    }
 
 
@@ -757,7 +781,7 @@ void CheckForNewSignals(string symbol, int symbolIndex)
    }
    else
    {
-      Print("Détection de tendance désactivée.");
+      
    }
 
    // Vérifier le signal selon la stratégie choisie
@@ -1247,137 +1271,241 @@ CrossSignal CheckMACrossover(string symbol, int index = 0)
    return Aucun;
 }
 
-//+------------------------------------------------------------------+
-//| Fonction pour afficher les FVG de signal                         |
-//+------------------------------------------------------------------+
+//---------------------------------------------------------------------------
+// Fonction de vérification du changement de paramètres 
+// (les valeurs précédentes sont stockées dans des variables statiques)
+//---------------------------------------------------------------------------
+bool CheckParameterChange()
+{
+   static int    prev_FVG_CandleLength       = FVG_CandleLength;
+   static double prev_FVG_MinAmplitudePoints = FVG_MinAmplitudePoints;
+   static color  prev_RectangleFVG           = RectangleFVG;
+   static string prev_LabelBullish           = LabelBullish;
+   static string prev_LabelBearish           = LabelBearish;
+   static color  prev_LabelColor             = LabelColor;
+   static color  prev_FVGColorBullish        = FVGColorBullish;
+   static color  prev_FVGColorBearish        = FVGColorBearish;
+   static FVG_Action prev_FVG_TradeAction    = FVG_TradeAction;
+   static int    prev_BougieFVGaanalyser     = BougieFVGaanalyser;
+   
+   if(prev_FVG_CandleLength       != FVG_CandleLength       ||
+      prev_FVG_MinAmplitudePoints != FVG_MinAmplitudePoints ||
+      prev_RectangleFVG           != RectangleFVG           ||
+      prev_LabelBullish           != LabelBullish           ||
+      prev_LabelBearish           != LabelBearish           ||
+      prev_LabelColor             != LabelColor             ||
+      prev_FVGColorBullish        != FVGColorBullish        ||
+      prev_FVGColorBearish        != FVGColorBearish        ||
+      prev_FVG_TradeAction        != FVG_TradeAction        ||
+      prev_BougieFVGaanalyser     != BougieFVGaanalyser)
+   {
+      // Mettre à jour les valeurs enregistrées
+      prev_FVG_CandleLength       = FVG_CandleLength;
+      prev_FVG_MinAmplitudePoints = FVG_MinAmplitudePoints;
+      prev_RectangleFVG           = RectangleFVG;
+      prev_LabelBullish           = LabelBullish;
+      prev_LabelBearish           = LabelBearish;
+      prev_LabelColor             = LabelColor;
+      prev_FVGColorBullish        = FVGColorBullish;
+      prev_FVGColorBearish        = FVGColorBearish;
+      prev_FVG_TradeAction        = FVG_TradeAction;
+      prev_BougieFVGaanalyser     = BougieFVGaanalyser;
+      return true;
+   }
+   return false;
+}
+
+//---------------------------------------------------------------------------
+// Fonction pour afficher les FVG de signal
+//---------------------------------------------------------------------------
+
 void DisplayFVGsignal()
 {
-    // Récupérer le symbole et timeframe courants
     string symbol = Symbol();
     ENUM_TIMEFRAMES timeframe = PERIOD_CURRENT;
-
-    // Obtenir le nombre total de barres disponibles
     int totalBars = Bars(symbol, timeframe);
-
-    // Calculer la valeur effective (bornée entre 1000 et totalBars)
-    int bougieFVGaanalyserEffective = BougieFVGaanalyser;
-    if (bougieFVGaanalyserEffective < 1000)
-        bougieFVGaanalyserEffective = 1000;
-    else if (bougieFVGaanalyserEffective > totalBars)
-        bougieFVGaanalyserEffective = totalBars;
-
-    // Si la valeur a changé, on supprime les anciens objets FVG
-    if (bougieFVGaanalyserEffective != lastBougieFVGaanalyserEffective)
+    
+    // Vérifier si l'un des paramètres a changé
+    if(CheckParameterChange())
     {
-        SupprimerObjetsFVG();
-        lastBougieFVGaanalyserEffective = bougieFVGaanalyserEffective;
+         Print("Modification des paramètres détectée, suppression des FVG existants...");
+         SupprimerObjetsFVG();
+         // On remet à zéro la variable de contrôle des bougies analysées
+         lastBougieFVGaanalyserEffective = 0;
     }
-
-    // Parcourir les bougies pour détecter les FVG
-    for (int i = 2; i < bougieFVGaanalyserEffective; i++)
+    
+    // Calculer le nombre effectif de bougies à analyser
+    int bougieFVGaanalyserEffective = BougieFVGaanalyser;
+    if(bougieFVGaanalyserEffective < 1000)
+         bougieFVGaanalyserEffective = 1000;
+    else if(bougieFVGaanalyserEffective > totalBars)
+         bougieFVGaanalyserEffective = totalBars;
+    
+    // Si le nombre de bougies à analyser a changé par rapport à la dernière exécution, 
+    // supprimer les anciens objets FVG
+    if(bougieFVGaanalyserEffective != lastBougieFVGaanalyserEffective)
+    {
+         SupprimerObjetsFVG();
+         lastBougieFVGaanalyserEffective = bougieFVGaanalyserEffective;
+    }
+    
+    // Récupérer la taille du tick pour le symbole actuel (gère le nombre de décimales)
+    double tickSize = SymbolInfoDouble(symbol, SYMBOL_POINT);
+    
+    // Variables pour garder en mémoire le low/high extrêmes des bougies (optionnel)
+    double _low  = iLow(symbol, timeframe, 0);
+    double _high = iHigh(symbol, timeframe, 0);
+    int c_bull = 0;
+    int c_bear = 0;
+    
+    // IMPORTANT : on démarre la boucle à 1 pour utiliser les bougies clôturées  (groupes : indices (i+2,i+1,i))
+    for (int i = 1; i < bougieFVGaanalyserEffective; i++)
     {
         // Récupérer les données des trois bougies nécessaires.
-        double high1 = iHigh(symbol, timeframe, i + 2);
-        double low1  = iLow(symbol, timeframe, i + 2);
-        double high2 = iHigh(symbol, timeframe, i + 1);
-        double low2  = iLow(symbol, timeframe, i + 1);
-        double high3 = iHigh(symbol, timeframe, i);
-        double low3  = iLow(symbol, timeframe, i);
-
-        // Calcul de l'amplitude en points
-        double fvgAmplitudeBullish = MathAbs(low3 - high1) / _Point;
-        double fvgAmplitudeBearish = MathAbs(high3 - low1) / _Point;
-
-        string fvgName;
-        double levelHigh, levelLow;
-        color zoneColor;
-        string labelText;
-
-        // Vérifier les conditions pour un FVG haussier
-        if (low3 > high1 && fvgAmplitudeBullish >= FVG_MinAmplitudePoints * (Symbol() == "XAUUSD" ? 0.01 : 1))
+        // Bougie la plus ancienne (index i+2)
+        double high1  = iHigh(symbol, timeframe, i + 2);
+        double low1   = iLow(symbol, timeframe, i + 2);
+        
+        // Bougie intermédiaire (index i+1) : utilisée pour déterminer la couleur
+        double open2  = iOpen(symbol, timeframe, i + 1);
+        double close2 = iClose(symbol, timeframe, i + 1);
+        
+        // La 3ème bougie clôturée (index i)
+        double high3  = iHigh(symbol, timeframe, i);
+        double low3   = iLow(symbol, timeframe, i);
+        
+        // Calcul de l'amplitude du FVG en nombre de points (ticks)
+        double fvgAmplitudeBullish = MathAbs(low3 - high1) / tickSize;
+        double fvgAmplitudeBearish = MathAbs(high3 - low1) / tickSize;
+        
+        // Vérifier la couleur de la bougie intermédiaire
+        bool isGreenCandle = (open2 < close2);
+        bool isRedCandle   = !isGreenCandle;
+        
+        // Vérifier les conditions pour un FVG haussier :
+        // - La 3ème bougie clôturée (index i) a un low supérieur au high de la bougie la plus ancienne (i+2)
+        // - Amplitude suffisante et bougie intermédiaire verte
+        if(low3 > high1 &&
+           fvgAmplitudeBullish >= FVG_MinAmplitudePoints &&
+           isGreenCandle)
         {
-            // Paramètres pour FVG haussier
-            fvgName = "FVG_Bullish_" + IntegerToString(i);
-            levelHigh = high1;
-            levelLow = low3;
-            zoneColor = FVGColorBullish;
-            labelText = LabelBullish;
-
-        }
-
-        // Vérifier les conditions pour un FVG baissier
-        else if (high3 < low1 && fvgAmplitudeBearish >= FVG_MinAmplitudePoints * (Symbol() == "XAUUSD" ? 0.01 : 1))
-        {
-            // Paramètres pour FVG baissier
-            fvgName = "FVG_Bearish_" + IntegerToString(i);
-            levelHigh = low1;
-            levelLow = high3;
-            zoneColor = FVGColorBearish;
-            labelText = LabelBearish;
-        }
-
-        else
-        {
-            continue; // Pas de FVG détecté, passer à la bougie suivante
-        }
-
-        // Dessiner la zone FVG (Intégration de DrawFVGZone ici)
-        // -------------------------------------------------------
-        // Vérifier si l'objet rectangle existe déjà
-        if (ObjectFind(0, fvgName) == -1)
-        {
-            // Calculer l'index de la bougie de fin (BOUGIES APRES LE FVG)
+            string fvgName = "FVG_Bullish_" + IntegerToString(i);
+            double levelHigh = high1; // Niveau supérieur du gap
+            double levelLow  = low3;  // Niveau inférieur du gap
+            color zoneColor  = FVGColorBullish;
+            string labelText = LabelBullish;
+    
+            // Définir la durée d'affichage sur le graphique (ici, on retrace à partir de la bougie en question)
             int endBarIndex = i - FVG_CandleLength;
-
-            // Vérifier si l'index de fin dépasse le nombre total de bougies
-            if (endBarIndex < 0) //Correction ici
-            {
-                endBarIndex = 0; // Ajuster l'index de fin
-            }
-
-            // Récupérer les temps de début et de fin à partir des index
-            datetime startTime = iTime(Symbol(), Period(), i);
-            datetime endTime = iTime(Symbol(), Period(), endBarIndex);
-
-            // Créer un rectangle
-            if (!ObjectCreate(0, fvgName, OBJ_RECTANGLE, 0, endTime, levelHigh, startTime, levelLow)) //Correction ici
-            {
-                Print("Erreur lors de la création de l'objet ", fvgName, " : ", GetLastError());
-                 continue;
-            }
-
-            // Définir les propriétés du rectangle
-            ObjectSetInteger(0, fvgName, OBJPROP_COLOR, zoneColor);            // Couleur du rectangle
-            ObjectSetInteger(0, fvgName, OBJPROP_STYLE, STYLE_SOLID);          // Style de la bordure
-            ObjectSetInteger(0, fvgName, OBJPROP_WIDTH, 1);                    // Épaisseur de la bordure
-            ObjectSetInteger(0, fvgName, OBJPROP_BACK, true);                  // Envoyer à l'arrière-plan
-            ObjectSetInteger(0, fvgName, OBJPROP_FILL, true);
-
-            // Ajouter une étiquette textuelle au centre du rectangle
-            string labelName = "Label_" + fvgName;
-            if (ObjectFind(0, labelName) == -1)
-            {
-                if (!ObjectCreate(0, labelName, OBJ_TEXT, 0, startTime, levelHigh))
-                {
-                    Print("Erreur lors de la création de l'objet texte ", labelName, " : ", GetLastError());
-                    continue;
-                }
-
-                // Calculer la position du label (centré dans le rectangle)
-                double midPrice = (levelHigh + levelLow) / 2.0;
-                datetime midTime = iTime(Symbol(), Period(), (i + endBarIndex) / 2);
-
-                // Définir les propriétés du label
-                ObjectSetString(0, labelName, OBJPROP_TEXT, labelText);
-                ObjectSetInteger(0, labelName, OBJPROP_COLOR, LabelColor);
-                ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 10);
-                ObjectSetString(0, labelName, OBJPROP_FONT, "Arial");
-                ObjectSetInteger(0, labelName, OBJPROP_ANCHOR, ANCHOR_CENTER);
-                ObjectMove(0, labelName, 0, midTime, midPrice);
-                ObjectSetInteger(0, labelName, OBJPROP_BACK, false);
-            }
+            if(endBarIndex < 0)
+                endBarIndex = 0;
+    
+            // Remarque : Nous utilisons ici iTime(symbol, timeframe, i) 
+            // qui correspond à la clôture de la 3ème bougie du groupe.
+            CreateObjectInDisplayFVGsignal( fvgName, zoneColor, 
+                                            iTime(symbol, timeframe, i), 
+                                            iTime(symbol, timeframe, endBarIndex), 
+                                            levelLow, levelHigh, labelText);
+            c_bull++;
         }
+        // Vérifier les conditions pour un FVG baissier :
+        // - La 3ème bougie clôturée a un high inférieur au low de la bougie la plus ancienne,
+        // - Amplitude suffisante et bougie intermédiaire rouge
+        else if(high3 < low1 &&
+                fvgAmplitudeBearish >= FVG_MinAmplitudePoints &&
+                isRedCandle)
+        {
+            string fvgName = "FVG_Bearish_" + IntegerToString(i);
+            double levelHigh = low1; // Niveau supérieur du gap
+            double levelLow  = high3; // Niveau inférieur du gap
+            color zoneColor  = FVGColorBearish;
+            string labelText = LabelBearish;
+    
+            int endBarIndex = i - FVG_CandleLength;
+            if(endBarIndex < 0)
+                endBarIndex = 0;
+    
+            CreateObjectInDisplayFVGsignal( fvgName, zoneColor, 
+                                            iTime(symbol, timeframe, i), 
+                                            iTime(symbol, timeframe, endBarIndex), 
+                                            levelLow, levelHigh, labelText);
+            c_bear++;
+        }
+    
+        // Mise à jour des extrêmes des bougies analysées (optionnel)
+        _low  = (_low  < low1)  ? _low  : low1;
+        _high = (_high > high1) ? _high : high1;
     }
+}
+
+//---------------------------------------------------------------------------
+// Fonction pour créer et/ou mettre à jour un objet graphique (rectangle et texte)
+//---------------------------------------------------------------------------
+
+void CreateObjectInDisplayFVGsignal(string name, color clrColor, datetime time1, datetime time2, double low, double high, string labelText)
+{
+    // Vérifier si l'objet rectangle existe déjà
+    if (ObjectFind(0, name) == -1)
+    {
+        // Créer un rectangle
+        if (!ObjectCreate(0, name, OBJ_RECTANGLE, 0, time1, low, time2, high))
+        {
+            Print("Erreur lors de la création de l'objet ", name, " : ", GetLastError());
+            return;
+        }
+        // Définir les propriétés du rectangle
+        ObjectSetInteger(0, name, OBJPROP_COLOR, clrColor);
+        ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
+        ObjectSetInteger(0, name, OBJPROP_FILL, true);
+        ObjectSetInteger(0, name, OBJPROP_BACK, true);  // Envoyer à l'arrière-plan
+    }
+    
+    // Créer ou mettre à jour l'objet texte
+    string textName = "Text_" + name;
+    datetime midTime = (time1 + time2) / 2;
+    double midPrice = (high + low) / 2;
+    
+    if (ObjectFind(0, textName) == -1)
+    {
+        if (!ObjectCreate(0, textName, OBJ_TEXT, 0, midTime, midPrice))
+        {
+            Print("Erreur lors de la création de l'objet texte ", textName, " : ", GetLastError());
+            return;
+        }
+        ObjectSetString(0, textName, OBJPROP_TEXT, labelText);
+        ObjectSetInteger(0, textName, OBJPROP_COLOR, LabelColor);
+        ObjectSetInteger(0, textName, OBJPROP_FONTSIZE, 10);
+        ObjectSetString(0, textName, OBJPROP_FONT, "Arial");
+        ObjectSetInteger(0, textName, OBJPROP_ANCHOR, ANCHOR_CENTER);
+        ObjectSetInteger(0, textName, OBJPROP_BACK, true);
+    }
+    else
+    {
+        ObjectSetString(0, textName, OBJPROP_TEXT, labelText);
+        ObjectSetInteger(0, textName, OBJPROP_COLOR, LabelColor);
+        ObjectSetInteger(0, textName, OBJPROP_FONTSIZE, 10);
+        ObjectSetString(0, textName, OBJPROP_FONT, "Arial");
+        ObjectSetInteger(0, textName, OBJPROP_ANCHOR, ANCHOR_CENTER);
+        ObjectSetInteger(0, textName, OBJPROP_BACK, true);
+        ObjectMove(0, textName, 0, midTime, midPrice);
+    }
+}
+
+
+//+------------------------------------------------------------------+
+//| Fonction pour vérifier si une bougie est verte                   |
+//+------------------------------------------------------------------+
+bool IsGreenCandle(double open, double close)
+{
+    return open < close;
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour vérifier si une bougie est rouge                   |
+//+------------------------------------------------------------------+
+bool IsRedCandle(double open, double close)
+{
+    return !IsGreenCandle(open, close);
 }
 
 //+------------------------------------------------------------------+
@@ -1385,7 +1513,6 @@ void DisplayFVGsignal()
 //+------------------------------------------------------------------+
 void SupprimerObjetsFVG()
 {
-    Print("Suppression des objets FVG existants...");
     for (int i = ObjectsTotal(0) - 1; i >= 0; i--)
     {
         string objName = ObjectName(0, i);
@@ -1393,94 +1520,206 @@ void SupprimerObjetsFVG()
         {
             ObjectDelete(0, objName);
         }
+         // Supprimer les textes associés aux FVG (commençant par "Text_FVG_")
+        if (StringFind(objName, "Text_FVG_") == 0)
+        {
+            ObjectDelete(0, objName);
+        }
     }
-    Print("Tous les objets FVG ont été supprimés.");
 }
+
 
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier le signal FVG                             |
 //+------------------------------------------------------------------+
-// Variables globales pour suivre l'état du FVG
-bool isTradeTaken = false; // Indique si une position a déjà été prise pour ce FVG
-datetime fvgStartTime;     // Heure de début du FVG
-
-// Déclaration de l'énumération CrossSignalFVG
-enum CrossSignalFVG
-{
-    None = 0,
-    Buy,
-    Sell
+// Structure pour stocker les informations d'un FVG
+struct FVGData {
+    datetime startTime;
+    datetime endTime;
+    double high1;
+    double low1;
+    double high3;
+    double low3;
+    bool isBullish;
+    bool isTraded; // Ajouter ce champ
 };
+
+// Tableau global pour stocker les FVG actifs
+FVGData activeFVGs[];
+datetime lastCheckedCandleTime = 0;
+
+// Fonction pour supprimer les FVG expirés
+void RemoveExpiredFVGs() {
+    datetime currentTime = TimeCurrent();
+    int newSize = 0;
+    for(int i = 0; i < ArraySize(activeFVGs); i++) {
+        if(currentTime <= activeFVGs[i].endTime) {
+            if(newSize != i) {
+                activeFVGs[newSize] = activeFVGs[i];
+            }
+            newSize++;
+        }
+    }
+    ArrayResize(activeFVGs, newSize);
+}
 
 CrossSignal CheckFVGSignal(string symbol)
 {
-    // Calcul du FVG
-    double highPrev = iHigh(symbol, 0, 1); // High de la bougie précédente
-    double lowPrev = iLow(symbol, 0, 1);   // Low de la bougie précédente
-    double amplitude = MathAbs(highPrev - lowPrev); // Amplitude du FVG
+    // Vérifier si c'est une nouvelle bougie
+    datetime currentCandleTime = iTime(symbol, PERIOD_CURRENT, 0);
+    bool isNewCandle = (currentCandleTime != lastCheckedCandleTime);
 
-    // Vérifier si un FVG est détecté
-    bool isFVG = amplitude >= FVG_MinAmplitudePoints * Point;
+    // Mettre à jour le temps de la dernière bougie vérifiée
+    if(isNewCandle) {
+        lastCheckedCandleTime = currentCandleTime;
+    }
 
-    if (isFVG && !isTradeTaken) // Si un FVG est détecté et aucune position n'a été prise
-    {
-        // Enregistrer l'heure de début du FVG
-        fvgStartTime = iTime(symbol, 0, 0);
+    // Supprimer les FVG expirés
+    RemoveExpiredFVGs();
 
-        // Stratégie de Breakout
-        if (FVG_TradeAction == "Breakout")
-        {
-            // Déterminer si le FVG est haussier (BISI) ou baissier (SIBI)
-            bool isBullishFVG = (iClose(symbol, 0, 1) > iOpen(symbol, 0, 1)); // Bougie précédente haussière
-            bool isBearishFVG = (iClose(symbol, 0, 1) < iOpen(symbol, 0, 1)); // Bougie précédente baissière
+    // Récupérer les données des bougies
+    ENUM_TIMEFRAMES timeframe = PERIOD_CURRENT;
+    double high1 = iHigh(symbol, timeframe, 3);
+    double low1  = iLow(symbol, timeframe, 3);
+    double open2  = iOpen(symbol, timeframe, 2);
+    double close2 = iClose(symbol, timeframe, 2);
+    double high3 = iHigh(symbol, timeframe, 1);
+    double low3  = iLow(symbol, timeframe, 1);
+    double currentClose = iClose(symbol, timeframe, 1);
+    double currentOpen = iOpen(symbol, timeframe, 1);
 
-            // Vérifier la clôture de la bougie actuelle
-            double currentClose = iClose(symbol, 0, 0); // Clôture de la bougie actuelle
+    bool isBearishCandle = currentClose < currentOpen;
+    bool isBullishCandle = currentClose > currentOpen;
 
-            // Breakout haussier (BISI)
-            if (isBullishFVG && currentClose > highPrev)
-            {
-                isTradeTaken = true; // Marquer qu'une position a été prise
-                return CrossSignalFVG::Buy; // Prendre une position à l'achat
-            }
-            // Breakout baissier (SIBI)
-            else if (isBearishFVG && currentClose < lowPrev)
-            {
-                isTradeTaken = true; // Marquer qu'une position a été prise
-                return CrossSignalFVG::Sell; // Prendre une position à la vente
-            }
-        }
-        // Stratégie de Rebond
-        else if (FVG_TradeAction == "Rebond")
-        {
-            // Vérifier si le prix rebondit à l'intérieur du FVG
-            double currentClose = iClose(symbol, 0, 0); // Clôture de la bougie actuelle
-            double currentLow = iLow(symbol, 0, 0);     // Low de la bougie actuelle
-            double currentHigh = iHigh(symbol, 0, 0);   // High de la bougie actuelle
-
-            // Rebond haussier (prix touche le bas du FVG et remonte)
-            if (currentLow <= lowPrev && currentClose > lowPrev)
-            {
-                isTradeTaken = true; // Marquer qu'une position a été prise
-                return CrossSignalFVG::Buy; // Prendre une position à l'achat
-            }
-            // Rebond baissier (prix touche le haut du FVG et redescend)
-            else if (currentHigh >= highPrev && currentClose < highPrev)
-            {
-                isTradeTaken = true; // Marquer qu'une position a été prise
-                return CrossSignalFVG::Sell; // Prendre une position à la vente
+    // Vérifier les FVG existants à chaque nouvelle bougie si en mode Rebound
+    if(isNewCandle && FVG_TradeAction == Rebound) {
+        // Vérification des FVG existants (intégration de CheckExistingFVGs)
+        for(int i = 0; i < ArraySize(activeFVGs); i++) {
+            // Ajouter cette condition pour ne pas retravailler un FVG déjà tradé
+            if (!activeFVGs[i].isTraded) {
+                if(activeFVGs[i].isBullish) {
+                    if(currentClose >= activeFVGs[i].high1 && currentClose <= activeFVGs[i].low3 && isBearishCandle) {
+                        Print("Achat immédiat - BISI (FVG existant) : prix entre high1 et low3 avec bougie baissière");
+                        Print("FVG start time: ", TimeToString(activeFVGs[i].startTime));
+                        activeFVGs[i].isTraded = true; // Marquer le FVG comme tradé
+                        return Achat;
+                    }
+                }
+                else {
+                    if(currentClose <= activeFVGs[i].low1 && currentClose >= activeFVGs[i].high3 && isBullishCandle) {
+                        Print("Vente immédiate - SIBI (FVG existant) : prix entre low1 et high3 avec bougie haussière");
+                        Print("FVG start time: ", TimeToString(activeFVGs[i].startTime));
+                        activeFVGs[i].isTraded = true; // Marquer le FVG comme tradé
+                        return Vente;
+                    }
+                }
             }
         }
     }
 
-    // Vérifier si le FVG a expiré (dépassé FVG_CandleLength bougies)
-    if (isTradeTaken && iBarShift(symbol, 0, fvgStartTime) >= FVG_CandleLength)
-    {
-        isTradeTaken = false; // Réinitialiser pour le prochain FVG
+    // Récupération de la taille d'un tick pour le symbole actuel
+    double tickSize = SymbolInfoDouble(symbol, SYMBOL_POINT);
+
+    // Calcul de l'amplitude du FVG en nombre de points
+    double fvgAmplitudeBullish = MathAbs(low3 - high1) / tickSize;
+    double fvgAmplitudeBearish = MathAbs(high3 - low1) / tickSize;
+
+    // Déterminer la couleur de la bougie intermédiaire (index 2)
+    bool isGreenCandle = (close2 > open2);
+    bool isRedCandle   = !isGreenCandle;
+
+    // Détection du FVG
+    bool bullishFVG = false;
+    bool bearishFVG = false;
+
+    if(low3 > high1 && fvgAmplitudeBullish >= FVG_MinAmplitudePoints && isGreenCandle) {
+        bullishFVG = true;
+    }
+    else if(high3 < low1 && fvgAmplitudeBearish >= FVG_MinAmplitudePoints && isRedCandle) {
+        bearishFVG = true;
     }
 
-    return CrossSignalFVG::None; // Aucun signal détecté
+    // Si un FVG est détecté
+    if(bullishFVG || bearishFVG) {
+        fvgStartTime = iTime(symbol, timeframe, 1);
+
+        // Ajouter le nouveau FVG à la liste des FVG actifs
+        int currentSize = ArraySize(activeFVGs);
+        ArrayResize(activeFVGs, currentSize + 1);
+        activeFVGs[currentSize].startTime = fvgStartTime;
+        activeFVGs[currentSize].endTime = fvgStartTime + (FVG_CandleLength * PeriodSeconds(timeframe));
+        activeFVGs[currentSize].high1 = high1;
+        activeFVGs[currentSize].low1 = low1;
+        activeFVGs[currentSize].high3 = high3;
+        activeFVGs[currentSize].low3 = low3;
+        activeFVGs[currentSize].isBullish = bullishFVG;
+        activeFVGs[currentSize].isTraded = false; // Initialiser à false
+
+        // On rentre ensuite dans la stratégie de trading
+        if(FVG_TradeAction == Rebound) {
+            datetime currentTime = TimeCurrent();
+
+            if(bullishFVG) {
+                // Vérifier si le FVG est encore valide
+                if(currentTime > activeFVGs[currentSize].endTime) {
+                    Print("FVG bullish expiré - Créé à: ", TimeToString(fvgStartTime), " Expiré à: ", TimeToString(activeFVGs[currentSize].endTime));
+                    return Aucun;
+                }
+
+                Print("BISI - Vérification FVG bullish");
+                Print("Limites rectangle - high1: ", high1, " low3: ", low3);
+                Print("Validité FVG - Début: ", TimeToString(fvgStartTime), " Fin: ", TimeToString(activeFVGs[currentSize].endTime));
+                Print("Prix de clôture actuel: ", currentClose);
+                Print("Prix d'ouverture actuel: ", currentOpen);
+
+                if(currentClose >= high1 && currentClose <= low3 && isBearishCandle) {
+                    Print("Achat immédiat - BISI : prix entre high1 et low3 avec bougie baissière");
+                    activeFVGs[currentSize].isTraded = true; // Marquer comme tradé
+                    return Achat;
+                }
+            }
+            else if(bearishFVG) {
+                // Vérifier si le FVG est encore valide
+                if(currentTime > activeFVGs[currentSize].endTime) {
+                    Print("FVG bearish expiré - Créé à: ", TimeToString(fvgStartTime), " Expiré à: ", TimeToString(activeFVGs[currentSize].endTime));
+                    return Aucun;
+                }
+
+                Print("SIBI - Vérification FVG bearish");
+                Print("Limites rectangle - low1: ", low1, " high3: ", high3);
+                Print("Validité FVG - Début: ", TimeToString(fvgStartTime), " Fin: ", TimeToString(activeFVGs[currentSize].endTime));
+                Print("Prix de clôture actuel: ", currentClose);
+                Print("Prix d'ouverture actuel: ", currentOpen);
+
+                if(currentClose <= low1 && currentClose >= high3 && isBullishCandle) {
+                    Print("Vente immédiate - SIBI : prix entre low1 et high3 avec bougie haussière");
+                    activeFVGs[currentSize].isTraded = true; // Marquer comme tradé
+                    return Vente;
+                }
+            }
+        }
+        else if(FVG_TradeAction == Breakout) {
+            // Breakout haussier : le prix dépasse le niveau supérieur du gap (high1)
+            if(bullishFVG && currentClose >= high1) {
+                activeFVGs[currentSize].isTraded = true;
+                Print("FVG Breakout bullish détecté - bullishFVG = ", bullishFVG,
+                      ", currentClose = ", currentClose, " , high1 = ", high1, " , low1 = ", low1);
+                return Achat;
+            }
+            // Breakout baissier : le prix est inférieur au niveau inférieur du gap (low1)
+            else if(bearishFVG && currentClose <= low1) {
+                activeFVGs[currentSize].isTraded = true;
+                Print("FVG Breakout bearish détecté - bearishFVG = ", bearishFVG,
+                      ", currentClose = ", currentClose, " , high1 = ", high1, " , low1 = ", low1);
+                return Vente;
+            }
+        }
+    }
+
+    return Aucun;
 }
+
+
 
 //+------------------------------------------------------------------+
 //| Fonction de vérification de validité d'une position               |
