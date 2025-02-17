@@ -12,6 +12,7 @@
 #include <Trade\PositionInfo.mqh>
 #include <Arrays\ArrayInt.mqh>
 #include <ChartObjects\ChartObject.mqh>
+#include <Arrays\ArrayString.mqh>
 
 // Définitions des objets pour l'affichage
 #define TRIGGER_OBJECT_NAME "TS_Trigger_Level"
@@ -41,6 +42,16 @@ struct TradeInfo {
     double      trailingSL_Level;
 };
 
+// Structure pour stocker les informations de la news
+struct NewsInfo {
+    datetime time;
+    string   name;
+    string   currency;
+    string   importance;
+    string   previous;
+    string   forecast;
+};
+
 TradeInfo openTrades[];
 
 CTrade trade;
@@ -65,7 +76,7 @@ input string  news_settings           = "=== Gestion des actualités ===";
 input bool    UseNewsFilter           = true;            // Utiliser le filtre des actualités
 input int     NewsFilterMinutesBefore = 60;              // Minutes avant les actualités pour éviter le trading
 input int     NewsFilterMinutesAfter  = 60;              // Minutes après les actualités pour éviter le trading
-input uint    NewsImportance          = 3;               // Niveau d'importance des actualités (1=Faible, 2=Moyen, 3=Fort)
+input int    NewsImportance           = 3;               // Niveau d'importance des actualités (1=Faible, 2=Moyen, 3=Fort)
 input string  ecart4                  = "";
 input string  notification            = "=== Notification ===";
 input bool    EnablePushNotifications = false;            // Activer les notifications push
@@ -168,10 +179,16 @@ bool          isNewMinute       = false;
 datetime      lastMinuteChecked = 0;
 ulong         current_ticket    = 0;    // Pour suivre le ticket de la position courante
 datetime lastBarTime = 0; // Heure de la dernière bougie traitée
+
 // Variables globales pour suivre l'état du FVG
 bool isTradeTaken = false; // Indique si une position a déjà été prise pour ce FVG
 datetime fvgStartTime;     // Heure de début du FVG
 datetime lastTradedFVGTime = 0; // FVG trader ou pas
+
+// Variables globales pour les news
+NewsInfo g_NextNews;
+NewsInfo g_LastDisplayedNews; // Pour stocker la dernière news affichée
+int      g_PreviousImportance = -1; // Initialisation avec une valeur impossible
 
 //--- Variables pour les handles des indicateurs
 int           MA_Handle1[];      // Handles pour les moyennes mobiles
@@ -315,10 +332,31 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-    // Mettre à jour la liste des symboles actifs à chaque tick
-    BuildActiveSymbolList();
+// Vérifie si la news a changé AVANT d'afficher
+    if (g_NextNews.time != g_LastDisplayedNews.time ||
+        g_NextNews.name != g_LastDisplayedNews.name ||
+        g_NextNews.currency != g_LastDisplayedNews.currency)
+    {
+        // La news a changé (ou c'est la première exécution)
+        if(g_NextNews.time != 0)
+        {
+            PrintFormat("Prochaine news : %s - %s (%s) - Importance: %s - Précédent: %s - Prévu: %s",
+                        TimeToString(g_NextNews.time, TIME_DATE|TIME_MINUTES),
+                        g_NextNews.name,
+                        g_NextNews.currency,
+                        g_NextNews.importance,
+                        g_NextNews.previous,
+                        g_NextNews.forecast);
 
-   // Suppression indicateur selon strategie de signal
+            // Met à jour la dernière news affichée
+            g_LastDisplayedNews = g_NextNews;
+        }
+    }
+
+ // Mettre à jour la liste des symboles actifs à chaque tick
+    BuildActiveSymbolList();
+    
+    // Suppression indicateur selon strategie de signal
    switch(Strategy) {
       case MA_Crossover:
          if ((int)ChartGetInteger(0, CHART_WINDOWS_TOTAL) > 0)
@@ -531,21 +569,101 @@ bool IsWeekend()
    return (currentDateTime.day_of_week == 0 || currentDateTime.day_of_week == 6);
 }
 
+//+------------------------------------------------------------------------+
+// Fonction pour convertir l'importance numérique en chaîne de caractères  |
+//+------------------------------------------------------------------------+
+string ImportanceToString(ENUM_CALENDAR_EVENT_IMPORTANCE importance) {
+    switch(importance) {
+        case CALENDAR_IMPORTANCE_LOW:      return "Low";
+        case CALENDAR_IMPORTANCE_MODERATE: return "Moderate";
+        case CALENDAR_IMPORTANCE_HIGH:     return "High";
+        default:                           return "None";
+    }
+}
+
 //+------------------------------------------------------------------+
-//| Fonction pour vérifier s'il y a des actualités importantes        |
+//| Fonction pour vérifier s'il y a des actualités importantes       |
 //+------------------------------------------------------------------+
 bool IsThereNews(string symbol)
 {
-   if (!UseNewsFilter)
-      return false;
 
-   datetime currentTime = TimeCurrent();
+    // Vérification du changement de paramètres *À L'INTÉRIEUR* de IsThereNews
+    if (NewsImportance != g_PreviousImportance) {
+        g_PreviousImportance = NewsImportance;
+    }
 
-   // Cette fonction nécessite une intégration avec un calendrier économique
-   // Vous devrez implémenter votre propre logique de vérification des actualités
-   // en fonction de votre source de données
+    MqlCalendarCountry countries[];
+    if(CalendarCountries(countries) == 0) {
+        Print("Erreur : Impossible de récupérer les pays du calendrier.");
+        return false;
+    }
 
-   return false; // Par défaut, pas d'actualités
+    datetime now = TimeCurrent();
+    datetime nextNewsTime = 0;
+    MqlCalendarEvent nextEvent;
+    MqlCalendarValue nextValue;
+    string nextCountryCode = "";
+    bool   newsFound      = false;
+
+    for(int i = 0; i < ArraySize(countries); i++) {
+        MqlCalendarValue values[];
+        int valueCount = CalendarValueHistory(values, now, now + 31536000, countries[i].code);
+
+        if(valueCount == 0) {
+            continue;
+        }
+
+        for(int j = 0; j < valueCount; j++) {
+            MqlCalendarEvent event;
+            if(!CalendarEventById(values[j].event_id, event)) {
+                Print("Erreur lors de la récupération des détails de l'événement ID ", values[j].event_id);
+                continue;
+            }
+
+            // Filtrage par importance
+            bool skip = false;
+            switch(NewsImportance)
+            {
+                case 1: if(event.importance != CALENDAR_IMPORTANCE_LOW) skip = true; break;
+                case 2: if(event.importance != CALENDAR_IMPORTANCE_MODERATE) skip = true; break;
+                case 3: if(event.importance != CALENDAR_IMPORTANCE_HIGH) skip = true; break;
+                default:
+                    Print("Valeur de NewsImportance invalide : ", NewsImportance);
+                    skip = true;
+                    break;
+            }
+            if(skip) continue;
+
+            // Vérification de l'heure
+            if(values[j].time > now) {
+                if(!newsFound || values[j].time < nextNewsTime) {
+                    nextNewsTime = values[j].time;
+                    nextEvent = event;
+                    nextValue = values[j];
+                    nextCountryCode = countries[i].code;
+                    newsFound = true;
+                }
+            }
+        }
+    }
+
+    if(newsFound) {
+        g_NextNews.time       = nextNewsTime;
+        g_NextNews.name       = nextEvent.name;
+        g_NextNews.currency   = nextCountryCode;
+        g_NextNews.importance = ImportanceToString(nextEvent.importance);
+        g_NextNews.previous   = (nextValue.prev_value == -9223372036854775808) ? "N/A" : DoubleToString(nextValue.prev_value, 2);
+        g_NextNews.forecast   = (nextValue.forecast_value == -9223372036854775808) ? "N/A" : DoubleToString(nextValue.forecast_value, 2);
+        return true;
+    } else {
+        g_NextNews.time = 0;
+        g_NextNews.name = "";
+        g_NextNews.currency = "";
+        g_NextNews.importance = "";
+        g_NextNews.previous = "";
+        g_NextNews.forecast = "";
+        return false;
+    }
 }
 
 //+------------------------------------------------------------------+
@@ -835,66 +953,6 @@ if (volume <= 0)
       }
    }
 
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour vérifier les nouveaux signaux pour le symbole actuel |
-//+------------------------------------------------------------------+
-void CheckForNewSignalsForCurrentSymbol()
-{
-   string currentSymbol = Symbol(); // Symbole du graphique actuel
-
-   // Vérifier les conditions de trading
-   if (!CanTrade(currentSymbol))
-      return;
-
-   // Obtenir la tendance
-   MarketTrend trend = GetMarketTrend(currentSymbol, 0); // Utilisez 0 car il n'y a qu'un seul symbole
-
-   // Vérifier le signal selon la stratégie choisie
-   CrossSignal signal = CheckStrategySignal(currentSymbol, 0); // Utilisez 0 car il n'y a qu'un seul symbole
-
-   if (signal != Aucun)
-   {
-      // Calculer le volume
-      double volume = CalculateVolume(currentSymbol);
-      if (volume <= 0)
-         return;
-
-      // Calculer les niveaux de SL et TP
-      double sl = 0.0, tp = 0.0;
-      double slPercentage = 0.0, tpPercentage = 0.0;
-      double slPoints = 0.0, tpPoints = 0.0;
-
-      if (StopLossType == SL_Classique)
-      {
-         CalculateClassicSLTP(currentSymbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
-      }
-      else if (StopLossType == SL_Suiveur)
-      {
-         CalculateTrailingSLTP(currentSymbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, sl, tp);
-      }
-      else if (StopLossType == GridTrading)
-      {
-         CalculateGridSLTP(currentSymbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
-      }
-
-      // Ouvrir la position
-      if (signal == Achat && (trend == TrendHaussiere || trend == Indecis))
-      {
-         if (OpenPosition(currentSymbol, ORDER_TYPE_BUY, volume, sl, tp))
-         {
-            Print("Position ACHAT ouverte pour ", currentSymbol, " avec succès.");
-         }
-      }
-      else if (signal == Vente && (trend == TrendBaissiere || trend == Indecis))
-      {
-         if (OpenPosition(currentSymbol, ORDER_TYPE_SELL, volume, sl, tp))
-         {
-            Print("Position VENTE ouverte pour ", currentSymbol, " avec succès.");
-         }
-      }
-   }
 }
 
 //+------------------------------------------------------------------+
@@ -1245,30 +1303,44 @@ void SupprimerObjetsMM()
 //+------------------------------------------------------------------+
 CrossSignal CheckMACrossover(string symbol, int index = 0)
 {
-   double ma1[], ma2[];
+double maRapide[], maLente[];
 
-   ArraySetAsSeries(ma1, true);
-   ArraySetAsSeries(ma2, true);
+// Initialiser les tableaux
+ArrayResize(maRapide, 2);
+ArrayResize(maLente, 2);
 
-   // Copier les données des moyennes mobiles
-   if (CopyBuffer(MA_Handle1[index], 0, 0, 2, ma1) <= 0 ||
-       CopyBuffer(MA_Handle2[index], 0, 0, 2, ma2) <= 0)
-   {
-      Print("Erreur lors de la copie des données MA pour ", symbol);
-      return Aucun;
-   }
+// Définir les tableaux pour être utilisés comme séries
+ArraySetAsSeries(maRapide, true);
+ArraySetAsSeries(maLente, true);
 
-   // Vérifier le croisement des moyennes mobiles
-   if (ma1[0] < ma2[0] && ma1[1] <= ma2[1])
-   {
-      return Achat;
-   }
-   else if (ma1[0] > ma2[0] && ma1[1] >= ma2[1])
-   {
-      return Vente;
-   }
+// Vérifier si les handles sont valides
+if (index >= ArraySize(MA_Handle1) || index >= ArraySize(MA_Handle2))
+{
+Print("Index invalide pour ", symbol);
+return Aucun;
+}
 
-   return Aucun;
+// Copier les données des moyennes mobiles
+int copieRapide = CopyBuffer(MA_Handle1[index], 0, 0, 2, maRapide);
+int copieLente = CopyBuffer(MA_Handle2[index], 0, 0, 2, maLente);
+
+if (copieRapide <= 0 || copieLente <= 0)
+{
+Print("Erreur lors de la copie des données MA pour ", symbol);
+return Aucun;
+}
+
+// Vérifier le croisement des moyennes mobiles lente et rapide
+if (maLente[0] < maRapide[0] && maLente[1] >= maRapide[1])
+{
+return Achat;
+}
+else if (maLente[0] > maRapide[0] && maLente[1] <= maRapide[1])
+{
+return Vente;
+}
+
+return Aucun;
 }
 
 //---------------------------------------------------------------------------
@@ -1755,48 +1827,6 @@ int CountPositions(string symbol)
         }
     }
     return count; // Retourner le nombre total de positions pour le symbole donné
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour ouvrir une nouvelle position                      |
-//+------------------------------------------------------------------+
-void OpenNewPosition(string symbol, CrossSignal signal, MarketTrend trend)
-{
-   double volume = CalculateVolume(symbol);
-   if (volume <= 0)
-   {
-      Print("Erreur: Taille de lot invalide pour ", symbol);
-      return;
-   }
-
-   ENUM_ORDER_TYPE orderType = (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
-
-   // Calculer les niveaux de Stop Loss et Take Profit
-   double sl = 0.0, tp = 0.0, slPercentage = 0.0, tpPercentage = 0.0, slPoints = 0.0, tpPoints = 0.0;
-   if (StopLossType == SL_Classique)
-   {
-      CalculateClassicSLTP(symbol, orderType, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
-   }
-   else if (StopLossType == SL_Suiveur)
-   {
-      // Pour le SL suiveur, les calculs sont effectués dans UpdateTrailingStop
-      CalculateTrailingSLTP(symbol, orderType, sl, tp);
-   }
-
-   // Ouvrir la position
-   if (trade.PositionOpen(symbol, orderType, volume, 0, sl, tp))
-   {
-      Print("Position ouverte pour ", symbol, " - Type: ", EnumToString(orderType), " - Volume: ", volume);
-      Print("SL: ", sl, " - TP: ", tp);
-      Print("SL en pourcentage de l'équité: ", slPercentage, "%");
-      Print("TP en pourcentage de l'équité: ", tpPercentage, "%");
-      Print("SL en points: ", slPoints);
-      Print("TP en points: ", tpPoints);
-   }
-   else
-   {
-      Print("Erreur lors de l'ouverture de la position pour ", symbol, " - Erreur: ", GetLastError());
-   }
 }
 
 //+------------------------------------------------------------------+
@@ -2641,9 +2671,16 @@ void DrawDisplayFrame()
     ArrayResize(lines, lineIndex + 1);
     lines[lineIndex++] = StringFormat("Solde : %.2f", AccountInfoDouble(ACCOUNT_EQUITY));
 
-    ArrayResize(lines, lineIndex + 1);
-    lines[lineIndex++] = StringFormat("G/P : %.2f", AccountInfoDouble(ACCOUNT_PROFIT));
-
+  ArrayResize(lines, lineIndex + 1);
+    datetime current_time = TimeCurrent();
+    datetime timeClose = iTime(Symbol(), PERIOD_CURRENT, 0);
+    long seconds_remaining = current_time - timeClose;
+    lines[lineIndex++] = StringFormat("G/P : %.2f || Temps écouler : %02d:%02d",
+                                     AccountInfoDouble(ACCOUNT_PROFIT),
+                                     seconds_remaining / 60, // Minutes
+                                     seconds_remaining % 60  // Secondes
+                                    );
+                                    
     ArrayResize(lines, lineIndex + 1);
     lines[lineIndex++] = StringFormat("Valeur du point : %.2f", SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_VALUE));
 
@@ -2760,13 +2797,7 @@ void DrawDisplayFrame()
     {
         // SL suiveur non utilisé => tout à zéro
         ArrayResize(lines, lineIndex + 1);
-        lines[lineIndex++] = "Seuil de déclenchement : 0.00000";
-
-        ArrayResize(lines, lineIndex + 1);
-        lines[lineIndex++] = "Respiration pour seuil : 0.00000";
-
-        ArrayResize(lines, lineIndex + 1);
-        lines[lineIndex++] = "SL placé à : 0.00000 || 0 points || 0% || 0.00";
+        lines[lineIndex++] = "SL suiveur non utilisé";
     }
     else
     {
@@ -2838,7 +2869,25 @@ if (slSuiveur > 0.0)
             }
         }
     }
-
+                ArrayResize(lines, lineIndex + 1);
+                lines[lineIndex++] = "-------------------------------------------";
+       
+    if (!UseNewsFilter)
+    {
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "News non utilisé";
+    }
+    else
+    {   
+           ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "News utilisé";
+     }
+        // fonction  IsThereNews
+          // NEWS
+          // Prochaine news 
+          // nom de la news
+          //| devise | heure | Prevu | Ancien
+           
     // -------------------------------------------------------
     // Création du rectangle + étiquettes
     // -------------------------------------------------------
