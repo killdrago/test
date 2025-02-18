@@ -189,6 +189,9 @@ datetime lastTradedFVGTime = 0; // FVG trader ou pas
 NewsInfo g_NextNews;
 NewsInfo g_LastDisplayedNews; // Pour stocker la dernière news affichée
 int      g_PreviousImportance = -1; // Initialisation avec une valeur impossible
+bool     g_PreviousUseNewsFilter     = false;  // Pour UseNewsFilter
+int      g_PreviousFilterMinutesBefore = -1;  // Pour NewsFilterMinutesBefore
+int      g_PreviousFilterMinutesAfter  = -1;  // Pour NewsFilterMinutesAfter
 
 //--- Variables pour les handles des indicateurs
 int           MA_Handle1[];      // Handles pour les moyennes mobiles
@@ -332,28 +335,11 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-// Vérifie si la news a changé AVANT d'afficher
-    if (g_NextNews.time != g_LastDisplayedNews.time ||
-        g_NextNews.name != g_LastDisplayedNews.name ||
-        g_NextNews.currency != g_LastDisplayedNews.currency)
-    {
-        // La news a changé (ou c'est la première exécution)
-        if(g_NextNews.time != 0)
-        {
-            PrintFormat("Prochaine news : %s - %s (%s) - Importance: %s - Précédent: %s - Prévu: %s",
-                        TimeToString(g_NextNews.time, TIME_DATE|TIME_MINUTES),
-                        g_NextNews.name,
-                        g_NextNews.currency,
-                        g_NextNews.importance,
-                        g_NextNews.previous,
-                        g_NextNews.forecast);
+// appelle istherenews pour MAJ en temps reel et pas chaque minutes
+string symbol = Symbol();
+IsThereNews(symbol);
 
-            // Met à jour la dernière news affichée
-            g_LastDisplayedNews = g_NextNews;
-        }
-    }
-
- // Mettre à jour la liste des symboles actifs à chaque tick
+// Mettre à jour la liste des symboles actifs à chaque tick
     BuildActiveSymbolList();
     
     // Suppression indicateur selon strategie de signal
@@ -586,10 +572,25 @@ string ImportanceToString(ENUM_CALENDAR_EVENT_IMPORTANCE importance) {
 //+------------------------------------------------------------------+
 bool IsThereNews(string symbol)
 {
-
-    // Vérification du changement de paramètres *À L'INTÉRIEUR* de IsThereNews
-    if (NewsImportance != g_PreviousImportance) {
+    // Vérification des changements de paramètres
+    bool parametersChanged = false;
+    if (NewsImportance != g_PreviousImportance ||
+        NewsFilterMinutesBefore != g_PreviousFilterMinutesBefore ||
+        NewsFilterMinutesAfter != g_PreviousFilterMinutesAfter)
+    {
+        parametersChanged = true;
+        // Mettre à jour les valeurs précédentes
         g_PreviousImportance = NewsImportance;
+        g_PreviousFilterMinutesBefore = NewsFilterMinutesBefore;
+        g_PreviousFilterMinutesAfter = NewsFilterMinutesAfter;
+        
+        // Réinitialiser les données des actualités
+        g_NextNews.time = 0;
+        g_NextNews.name = "";
+        g_NextNews.currency = "";
+        g_NextNews.importance = "";
+        g_NextNews.previous = "";
+        g_NextNews.forecast = "";
     }
 
     MqlCalendarCountry countries[];
@@ -624,9 +625,21 @@ bool IsThereNews(string symbol)
             bool skip = false;
             switch(NewsImportance)
             {
-                case 1: if(event.importance != CALENDAR_IMPORTANCE_LOW) skip = true; break;
-                case 2: if(event.importance != CALENDAR_IMPORTANCE_MODERATE) skip = true; break;
-                case 3: if(event.importance != CALENDAR_IMPORTANCE_HIGH) skip = true; break;
+                case 1:
+                    if(event.importance != CALENDAR_IMPORTANCE_LOW && event.importance != CALENDAR_IMPORTANCE_MODERATE) {
+                        skip = true;
+                    }
+                    break;
+                case 2:
+                    if(event.importance != CALENDAR_IMPORTANCE_MODERATE) {
+                        skip = true;
+                    }
+                    break;
+                case 3:
+                    if(event.importance != CALENDAR_IMPORTANCE_HIGH) {
+                        skip = true;
+                    }
+                    break;
                 default:
                     Print("Valeur de NewsImportance invalide : ", NewsImportance);
                     skip = true;
@@ -652,16 +665,23 @@ bool IsThereNews(string symbol)
         g_NextNews.name       = nextEvent.name;
         g_NextNews.currency   = nextCountryCode;
         g_NextNews.importance = ImportanceToString(nextEvent.importance);
-        g_NextNews.previous   = (nextValue.prev_value == -9223372036854775808) ? "N/A" : DoubleToString(nextValue.prev_value, 2);
-        g_NextNews.forecast   = (nextValue.forecast_value == -9223372036854775808) ? "N/A" : DoubleToString(nextValue.forecast_value, 2);
+        
+        // Correction pour l'échelle des valeurs
+        double prev_value = (nextValue.prev_value == -9223372036854775808) ? 0 : nextValue.prev_value / 1000000.0;
+        double forecast_value = (nextValue.forecast_value == -9223372036854775808) ? 0 : nextValue.forecast_value / 1000000.0;
+        g_NextNews.previous   = (nextValue.prev_value == -9223372036854775808) ? "N/A" : DoubleToString(prev_value, 2);
+        g_NextNews.forecast   = (nextValue.forecast_value == -9223372036854775808) ? "N/A" : DoubleToString(forecast_value, 2);
         return true;
     } else {
-        g_NextNews.time = 0;
-        g_NextNews.name = "";
-        g_NextNews.currency = "";
-        g_NextNews.importance = "";
-        g_NextNews.previous = "";
-        g_NextNews.forecast = "";
+        // Si aucune actualité n'est trouvée, réinitialiser g_NextNews (si pas déjà fait)
+        if (!parametersChanged) {
+            g_NextNews.time = 0;
+            g_NextNews.name = "";
+            g_NextNews.currency = "";
+            g_NextNews.importance = "";
+            g_NextNews.previous = "";
+            g_NextNews.forecast = "";
+        }
         return false;
     }
 }
@@ -2651,8 +2671,8 @@ void DrawDisplayFrame()
     {
         case 1: xPos = 10;                    yPos = 10;                     break; // Haut gauche
         case 2: xPos = (int)chartWidth - 320; yPos = 10;                     break; // Haut droit
-        case 3: xPos = 10;                    yPos = (int)chartHeight - 410; break; // Bas gauche
-        case 4: xPos = (int)chartWidth - 320; yPos = (int)chartHeight - 410; break; // Bas droit
+        case 3: xPos = 10;                    yPos = (int)chartHeight - 450; break; // Bas gauche
+        case 4: xPos = (int)chartWidth - 320; yPos = (int)chartHeight - 450; break; // Bas droit
     }
 
     // Espacement vertical entre les lignes
@@ -2669,8 +2689,10 @@ void DrawDisplayFrame()
     lines[lineIndex++] = StringFormat("Compte : %s", AccountInfoString(ACCOUNT_NAME));
 
     ArrayResize(lines, lineIndex + 1);
-    lines[lineIndex++] = StringFormat("Solde : %.2f", AccountInfoDouble(ACCOUNT_EQUITY));
-
+    lines[lineIndex++] = StringFormat("Solde : %.2f || Valeur du point : %.2f",
+                                 AccountInfoDouble(ACCOUNT_EQUITY),
+                                 SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_VALUE));
+                                 
   ArrayResize(lines, lineIndex + 1);
     datetime current_time = TimeCurrent();
     datetime timeClose = iTime(Symbol(), PERIOD_CURRENT, 0);
@@ -2682,13 +2704,7 @@ void DrawDisplayFrame()
                                     );
                                     
     ArrayResize(lines, lineIndex + 1);
-    lines[lineIndex++] = StringFormat("Valeur du point : %.2f", SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_VALUE));
-
-    ArrayResize(lines, lineIndex + 1);
-    lines[lineIndex++] = StringFormat("Marge utilisée : %.2f", AccountInfoDouble(ACCOUNT_MARGIN));
-
-    ArrayResize(lines, lineIndex + 1);
-    lines[lineIndex++] = StringFormat("Marge restante : %.2f", AccountInfoDouble(ACCOUNT_FREEMARGIN));
+    lines[lineIndex++] = StringFormat("Marge utilisée : %.2f || Marge restante : %.2f" , AccountInfoDouble(ACCOUNT_MARGIN), AccountInfoDouble(ACCOUNT_FREEMARGIN));
 
     int totalPositions = CountPositions(Symbol());
     ArrayResize(lines, lineIndex + 1);
@@ -2771,17 +2787,15 @@ void DrawDisplayFrame()
         lines[lineIndex++] = StringFormat("Grid trading : (%s)", (StopLossType == GridTrading) ? "True" : "False");
 
         ArrayResize(lines, lineIndex + 1);
-        lines[lineIndex++] = StringFormat("Prochaine POS en point : %.2f", GridDistancePoints);
-
-        ArrayResize(lines, lineIndex + 1);
         lines[lineIndex++] = StringFormat("Nb max de POS : %d", GridMaxOrders);
     }
     else
     {
         ArrayResize(lines, lineIndex + 1);
         lines[lineIndex++] = StringFormat("Grid trading : (%s)", (StopLossType == GridTrading) ? "True" : "False");
+        
         ArrayResize(lines, lineIndex + 1);
-        lines[lineIndex++] = "Grid trading non utilisé";
+        lines[lineIndex++] = "Nb max de POS : 0";
     }
 
     ArrayResize(lines, lineIndex + 1);
@@ -2879,14 +2893,25 @@ if (slSuiveur > 0.0)
     }
     else
     {   
-           ArrayResize(lines, lineIndex + 1);
+        ArrayResize(lines, lineIndex + 1);
         lines[lineIndex++] = "News utilisé";
+        
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Prochaine news : " + TimeToString(g_NextNews.time, TIME_DATE|TIME_MINUTES);     
+
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Noms : " + g_NextNews.name;
+        
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Devise : " + g_NextNews.currency + " || Importance : " + g_NextNews.importance;  
+   
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Précédent : " + g_NextNews.previous + " || Prévu : " + g_NextNews.forecast;  
+
      }
-        // fonction  IsThereNews
-          // NEWS
-          // Prochaine news 
-          // nom de la news
-          //| devise | heure | Prevu | Ancien
+     
+     
+
            
     // -------------------------------------------------------
     // Création du rectangle + étiquettes
