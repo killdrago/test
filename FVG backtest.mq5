@@ -50,6 +50,7 @@ struct NewsInfo {
     string   importance;
     string   previous;
     string   forecast;
+    string   actual;
 };
 
 TradeInfo openTrades[];
@@ -76,11 +77,12 @@ input string  news_settings           = "=== Gestion des actualités ===";
 input bool    UseNewsFilter           = true;            // Utiliser le filtre des actualités
 input int     NewsFilterMinutesBefore = 60;              // Minutes avant les actualités pour éviter le trading
 input int     NewsFilterMinutesAfter  = 60;              // Minutes après les actualités pour éviter le trading
-input int    NewsImportance           = 3;               // Niveau d'importance des actualités (1=Faible, 2=Moyen, 3=Fort)
+enum Choiximportance {High, High_Medium, All};
+input Choiximportance NewsImportance  = High;            // Choix importance news
 input string  ecart4                  = "";
 input string  notification            = "=== Notification ===";
-input bool    EnablePushNotifications = false;            // Activer les notifications push
-input bool    EnableAlerts            = false;            // Activer les alertes (fenêtre pop-up MT5)
+input bool    EnablePushNotifications = false;           // Activer les notifications push
+input bool    EnableAlerts            = false;           // Activer les alertes (fenêtre pop-up MT5)
 input string  ecart5                  = "";
 input string  martingale_settings     = "=== Paramètres des lots et martingale ===";
 enum LotType {LotFixe, Martingale};
@@ -193,6 +195,7 @@ bool     g_PreviousUseNewsFilter     = false;  // Pour UseNewsFilter
 int      g_PreviousFilterMinutesBefore = -1;  // Pour NewsFilterMinutesBefore
 int      g_PreviousFilterMinutesAfter  = -1;  // Pour NewsFilterMinutesAfter
 
+
 //--- Variables pour les handles des indicateurs
 int           MA_Handle1[];      // Handles pour les moyennes mobiles
 int           MA_Handle2[];
@@ -202,6 +205,7 @@ int           RSIHandle;         // Handle pour le RSI
 //--- Enumérations personnalisées
 enum MarketTrend { TrendHaussiere, TrendBaissiere, Indecis };
 enum CrossSignal { Achat, Vente, Aucun };
+enum NewsImportanceLevel { LOW = 1, MEDIUM = 2, HIGH = 3 };
 
 //--- Stockage indicateur de tendance
 int currentTrendMethod = -1; // Stocke l'indicateur actuellement affiché (-1 = aucun au départ)
@@ -470,13 +474,6 @@ IsThereNews(symbol);
          continue; // Passer au symbole suivant
       }
 
-      // Vérifier les actualités importantes pour ce symbole
-      if (UseNewsFilter && IsThereNews(symbol)) // <--- Nouvelle fonction (étape 5)
-      {
-         Print("Actualités importantes détectées pour ", symbol, ", trading évité.");
-         return; // Passer au symbole suivant (RETURN, pas CONTINUE ici, car on ne veut pas trader d'autres symboles si news)
-      }
-
       // Vérifier les signaux et ouvrir des positions si nécessaire pour ce symbole
       CheckForNewSignals(symbol, i); // <--- Fonction CheckForNewSignals modifiée (étape 6)
    }
@@ -591,6 +588,15 @@ bool IsThereNews(string symbol)
         g_NextNews.importance = "";
         g_NextNews.previous = "";
         g_NextNews.forecast = "";
+        
+        // Réinitialiser aussi les données de la dernière news
+        g_LastDisplayedNews.time = 0;
+        g_LastDisplayedNews.name = "";
+        g_LastDisplayedNews.currency = "";
+        g_LastDisplayedNews.importance = "";
+        g_LastDisplayedNews.previous = "";
+        g_LastDisplayedNews.forecast = "";
+        g_LastDisplayedNews.actual = ""; // Nouvelle propriété pour la valeur actuelle
     }
 
     MqlCalendarCountry countries[];
@@ -601,18 +607,19 @@ bool IsThereNews(string symbol)
 
     datetime now = TimeCurrent();
     datetime nextNewsTime = 0;
-    MqlCalendarEvent nextEvent;
-    MqlCalendarValue nextValue;
-    string nextCountryCode = "";
-    bool   newsFound      = false;
+    datetime lastNewsTime = 0;
+    MqlCalendarEvent nextEvent, lastEvent;
+    MqlCalendarValue nextValue, lastValue;
+    string nextCountryCode = "", lastCountryCode = "";
+    bool newsFound = false;
+    bool lastNewsFound = false;
 
     for(int i = 0; i < ArraySize(countries); i++) {
         MqlCalendarValue values[];
-        int valueCount = CalendarValueHistory(values, now, now + 31536000, countries[i].code);
+        // Rechercher 24h avant et après
+        int valueCount = CalendarValueHistory(values, now - 86400, now + 86400, countries[i].code);
 
-        if(valueCount == 0) {
-            continue;
-        }
+        if(valueCount == 0) continue;
 
         for(int j = 0; j < valueCount; j++) {
             MqlCalendarEvent event;
@@ -625,17 +632,17 @@ bool IsThereNews(string symbol)
             bool skip = false;
             switch(NewsImportance)
             {
-                case 1:
+                case All:
                     if(event.importance != CALENDAR_IMPORTANCE_LOW && event.importance != CALENDAR_IMPORTANCE_MODERATE) {
                         skip = true;
                     }
                     break;
-                case 2:
+                case High_Medium:
                     if(event.importance != CALENDAR_IMPORTANCE_MODERATE) {
                         skip = true;
                     }
                     break;
-                case 3:
+                case High:
                     if(event.importance != CALENDAR_IMPORTANCE_HIGH) {
                         skip = true;
                     }
@@ -647,7 +654,7 @@ bool IsThereNews(string symbol)
             }
             if(skip) continue;
 
-            // Vérification de l'heure
+            // News futures
             if(values[j].time > now) {
                 if(!newsFound || values[j].time < nextNewsTime) {
                     nextNewsTime = values[j].time;
@@ -657,33 +664,49 @@ bool IsThereNews(string symbol)
                     newsFound = true;
                 }
             }
+            // News passées
+            else if(values[j].time <= now) {
+                if(!lastNewsFound || values[j].time > lastNewsTime) {
+                    lastNewsTime = values[j].time;
+                    lastEvent = event;
+                    lastValue = values[j];
+                    lastCountryCode = countries[i].code;
+                    lastNewsFound = true;
+                }
+            }
         }
     }
 
+    // Mise à jour des news futures
     if(newsFound) {
-        g_NextNews.time       = nextNewsTime;
-        g_NextNews.name       = nextEvent.name;
-        g_NextNews.currency   = nextCountryCode;
+        g_NextNews.time = nextNewsTime;
+        g_NextNews.name = nextEvent.name;
+        g_NextNews.currency = nextCountryCode;
         g_NextNews.importance = ImportanceToString(nextEvent.importance);
         
-        // Correction pour l'échelle des valeurs
         double prev_value = (nextValue.prev_value == -9223372036854775808) ? 0 : nextValue.prev_value / 1000000.0;
         double forecast_value = (nextValue.forecast_value == -9223372036854775808) ? 0 : nextValue.forecast_value / 1000000.0;
-        g_NextNews.previous   = (nextValue.prev_value == -9223372036854775808) ? "N/A" : DoubleToString(prev_value, 2);
-        g_NextNews.forecast   = (nextValue.forecast_value == -9223372036854775808) ? "N/A" : DoubleToString(forecast_value, 2);
-        return true;
-    } else {
-        // Si aucune actualité n'est trouvée, réinitialiser g_NextNews (si pas déjà fait)
-        if (!parametersChanged) {
-            g_NextNews.time = 0;
-            g_NextNews.name = "";
-            g_NextNews.currency = "";
-            g_NextNews.importance = "";
-            g_NextNews.previous = "";
-            g_NextNews.forecast = "";
-        }
-        return false;
+        g_NextNews.previous = (nextValue.prev_value == -9223372036854775808) ? "N/A" : DoubleToString(prev_value, 2);
+        g_NextNews.forecast = (nextValue.forecast_value == -9223372036854775808) ? "N/A" : DoubleToString(forecast_value, 2);
     }
+
+    // Mise à jour des news passées
+    if(lastNewsFound) {
+        g_LastDisplayedNews.time = lastNewsTime;
+        g_LastDisplayedNews.name = lastEvent.name;
+        g_LastDisplayedNews.currency = lastCountryCode;
+        g_LastDisplayedNews.importance = ImportanceToString(lastEvent.importance);
+        
+        double prev_value = (lastValue.prev_value == -9223372036854775808) ? 0 : lastValue.prev_value / 1000000.0;
+        double forecast_value = (lastValue.forecast_value == -9223372036854775808) ? 0 : lastValue.forecast_value / 1000000.0;
+        double actual_value = (lastValue.actual_value == -9223372036854775808) ? 0 : lastValue.actual_value / 1000000.0;
+        
+        g_LastDisplayedNews.previous = (lastValue.prev_value == -9223372036854775808) ? "N/A" : DoubleToString(prev_value, 2);
+        g_LastDisplayedNews.forecast = (lastValue.forecast_value == -9223372036854775808) ? "N/A" : DoubleToString(forecast_value, 2);
+        g_LastDisplayedNews.actual = (lastValue.actual_value == -9223372036854775808) ? "N/A" : DoubleToString(actual_value, 2);
+    }
+
+    return (newsFound || lastNewsFound);
 }
 
 //+------------------------------------------------------------------+
@@ -899,15 +922,56 @@ void CheckForNewSignals(string symbol, int symbolIndex)
       Print("Conditions de marché non favorables pour ", symbol);
       return;
    }
-
-   // Vérifier les actualités importantes
-   if (UseNewsFilter && IsThereNews(symbol))
+   
+// Vérification des news          
+if(UseNewsFilter && IsThereNews(symbol))
+{
+   datetime currentTime = TimeCurrent();
+     
+   // Vérifier les news passées
+   bool isAfterLastNews = (g_LastDisplayedNews.time > 0) && 
+                         (currentTime >= g_LastDisplayedNews.time) && 
+                         (currentTime <= g_LastDisplayedNews.time + (NewsFilterMinutesAfter * 60));
+                         
+   // Vérifier les news à venir
+   bool isBeforeNextNews = (g_NextNews.time > 0) && 
+                          (currentTime >= g_NextNews.time - (NewsFilterMinutesBefore * 60)) && 
+                          (currentTime <= g_NextNews.time + (NewsFilterMinutesAfter * 60));
+                          
+   // Déclaration de High pour comparaison sinon ca fonctionne pas comme pour les autres
+   string HighStr = "High";
+   if (isAfterLastNews || isBeforeNextNews)
    {
-      Print("Actualités importantes détectées, trading évité.");
-      return;
-   }
+      switch(NewsImportance)
+      {
 
-   // Variable pour stocker la tendance
+         case High:
+
+            if(g_LastDisplayedNews.importance == HighStr || g_NextNews.importance == HighStr)
+            {
+              // Print("Période avant/après une news High - Aucun trade ne sera pris sur ", symbol);
+               return;
+            }
+            break;
+         case High_Medium:
+            if(g_LastDisplayedNews.importance >= (string)High_Medium || g_NextNews.importance >= (string)High_Medium)
+            {
+              // Print("Période avant/après une news Medium ou High - Aucun trade ne sera pris", symbol);
+               return;
+            }
+            break;
+         case All:
+            if(g_LastDisplayedNews.importance >= (string)All || g_NextNews.importance >= (string)All)
+            {
+              // Print("Période avant/après une news Low, Medium ou High - Aucun trade ne sera pris ", symbol);
+               return;
+            }
+            break;
+      }
+   }
+}
+
+ // Variable pour stocker la tendance
    MarketTrend trend = Indecis; // Assurez-vous que cette valeur par défaut est correcte
 
    // Vérifier si la détection de tendance est activée
@@ -927,7 +991,6 @@ void CheckForNewSignals(string symbol, int symbolIndex)
 
    if (signal != Aucun)
    {
-      Print("Signal détecté : ", EnumToString(signal));
 
 double volume = CalculateVolume(symbol);
 
@@ -1174,6 +1237,14 @@ void DisplayRSIInSubWindow()
 CrossSignal CheckRSISignal(string symbol, int index = 0)
 {
    double rsi[];
+   static datetime lastCheckedTime = 0;
+   datetime currentBarTime = iTime(symbol, _Period, 0);
+
+   // Vérifier si nous sommes sur une nouvelle bougie
+   if (currentBarTime == lastCheckedTime)
+   {
+      return Aucun;  // On ne fait rien tant qu'on n'est pas sur une nouvelle bougie
+   }
 
    ArraySetAsSeries(rsi, true);
 
@@ -1185,19 +1256,22 @@ CrossSignal CheckRSISignal(string symbol, int index = 0)
       return Aucun;
    }
 
-   // Copier les données RSI
-   if (CopyBuffer(rsiHandle, 0, 0, 2, rsi) <= 0)
+   // Copier les données RSI de la bougie précédente
+   if (CopyBuffer(rsiHandle, 0, 1, 1, rsi) <= 0)
    {
       Print("Erreur lors de la copie des données RSI pour ", symbol);
       return Aucun;
    }
 
-   // Vérifier les conditions de surachat et survente
-   if (rsi[0] < 30 && rsi[1] >= 30)
+   // Mettre à jour le temps de la dernière vérification
+   lastCheckedTime = currentBarTime;
+
+   // Vérifier les conditions de surachat et survente sur la bougie précédente
+   if (rsi[0] < 30)
    {
       return Achat;
    }
-   else if (rsi[0] > 70 && rsi[1] <= 70)
+   else if (rsi[0] > 70)
    {
       return Vente;
    }
@@ -1855,7 +1929,6 @@ int CountPositions(string symbol)
 bool IsPositionOpen(string symbol)
 {
     int totalPositions = PositionsTotal();
-    Print("Nombre total de positions : ", totalPositions);
 
     for (int i = totalPositions - 1; i >= 0; i--)
     {
@@ -1875,17 +1948,13 @@ bool IsPositionOpen(string symbol)
         string positionSymbol = PositionGetString(POSITION_SYMBOL);
         ulong positionMagic = PositionGetInteger(POSITION_MAGIC);
 
-        Print("Position trouvée : Symbole = ", positionSymbol, ", Magic = ", positionMagic);
-
-        // Vérifier le symbole et le Magic Number (si activé)
+       // Vérifier le symbole et le Magic Number (si activé)
         if (positionSymbol == symbol && (!UseMagicNumber || positionMagic == MagicNumber))
         {
-            Print("Une position est déjà ouverte pour ", symbol);
             return true; // Une position est ouverte pour ce symbole
         }
     }
 
-    Print("Aucune position ouverte pour ", symbol);
     return false; // Aucune position ouverte pour ce symbole
 }
 
@@ -2524,16 +2593,6 @@ double CalculateVolume(string symbol)
    double lotStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
    lotSize = NormalizeDouble(MathRound(lotSize / lotStep) * lotStep, 2);
 
-Print("--- Informations du symbole ", symbol, " ---");
-Print("SYMBOL_VOLUME_MIN: ", SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN));
-Print("SYMBOL_VOLUME_MAX: ", SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX));
-Print("SYMBOL_VOLUME_STEP: ", SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP));
-Print("FixedLotSize: ", FixedLotSize);  // Pour vérifier
-Print("--- Fin informations ---");
-
-   // Afficher dans le journal pour le débogage
-   Print("Lot calculé pour ", symbol, " : ", lotSize, " (Méthode : ", EnumToString(LotSizeType), ")");
-
    return lotSize;
 }
 
@@ -2671,8 +2730,8 @@ void DrawDisplayFrame()
     {
         case 1: xPos = 10;                    yPos = 10;                     break; // Haut gauche
         case 2: xPos = (int)chartWidth - 320; yPos = 10;                     break; // Haut droit
-        case 3: xPos = 10;                    yPos = (int)chartHeight - 450; break; // Bas gauche
-        case 4: xPos = (int)chartWidth - 320; yPos = (int)chartHeight - 450; break; // Bas droit
+        case 3: xPos = 10;                    yPos = (int)chartHeight - 440; break; // Bas gauche
+        case 4: xPos = (int)chartWidth - 320; yPos = (int)chartHeight - 440; break; // Bas droit
     }
 
     // Espacement vertical entre les lignes
@@ -2886,15 +2945,30 @@ if (slSuiveur > 0.0)
                 ArrayResize(lines, lineIndex + 1);
                 lines[lineIndex++] = "-------------------------------------------";
        
+    // -------------------------------------------------------
+    // SECTION 5 : News
+    // -------------------------------------------------------
     if (!UseNewsFilter)
     {
         ArrayResize(lines, lineIndex + 1);
-        lines[lineIndex++] = "News non utilisé";
+        lines[lineIndex++] = "News : (False)";
+        
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Prochaine news : ";     
+
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Noms : ";
+        
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Devise : ";  
+   
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "Précédent : ";  
     }
     else
     {   
         ArrayResize(lines, lineIndex + 1);
-        lines[lineIndex++] = "News utilisé";
+        lines[lineIndex++] = "News : (True)";
         
         ArrayResize(lines, lineIndex + 1);
         lines[lineIndex++] = "Prochaine news : " + TimeToString(g_NextNews.time, TIME_DATE|TIME_MINUTES);     
@@ -3588,11 +3662,6 @@ bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, doubl
    if (OrderSend(request, result))
    {
       Print("Position ouverte pour ", symbol, " - Type: ", EnumToString(orderType), " - Volume: ", volume);
-      Print("SL: ", sl, " - TP: ", tp);
-      Print("SL en pourcentage de l'équité: ", slPercentage, "%");
-      Print("TP en pourcentage de l'équité: ", tpPercentage, "%");
-      Print("SL en points: ", slPoints);
-      Print("TP en points: ", tpPoints);
 
       // Envoyer des notifications
       SendNotifications(symbol, orderType, volume, request.price, sl, tp);
@@ -3698,7 +3767,6 @@ bool OpenPositionWithTrailingSL(string symbol, CrossSignal signal, double volume
 {
    if (IsPositionOpen(symbol) == true)
    {
-      Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
       return false;
    }
 
@@ -3721,7 +3789,6 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
 {
    if (IsPositionOpen(symbol) == true)
    {
-      Print("Une position est déjà ouverte pour ", symbol, ". Aucune nouvelle position ne sera ouverte.");
       return false;
    }
    else
@@ -3733,7 +3800,6 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
 
    if (OpenPosition(symbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, volume, sl, tp))
    {
-      Print("Position ouverte avec Stop Loss Classique pour ", symbol);
       return true;
    }
    }
