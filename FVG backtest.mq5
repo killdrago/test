@@ -84,12 +84,10 @@ input string  notification            = "=== Notification ===";
 input bool    EnablePushNotifications = false;           // Activer les notifications push
 input bool    EnableAlerts            = false;           // Activer les alertes (fenêtre pop-up MT5)
 input string  ecart5                  = "";
-input string  martingale_settings     = "=== Paramètres des lots et martingale ===";
-enum LotType {LotFixe, Martingale};
+input string  risque                  = "=== Paramètres des lots ===";
+enum LotType {LotFixe};
 input LotType LotSizeType             = LotFixe;         // Type de gestion du volume
 input double  FixedLotSize            = 0.01;            // Taille de lot fixe
-input double  MartingaleStartLot      = 0.01;            // Lot de départ pour la martingale
-input double  MartingaleMultiplier    = 2.0;             // Multiplicateur de la martingale
 input string  ecart6                  = "";
 input string  spreadslippage          = "=== Spread et slippage ===";
 input bool    UseMaxSpreadFilter      = false;           // Utiliser le filtre de spread maximum
@@ -140,26 +138,33 @@ input FVG_Action FVG_TradeAction      = Breakout;        // Action à entreprend
 input int     BougieFVGaanalyser      = 1000;            // Nombre de bougies à utiliser 1000 minimum
 input string  ecart12                = "";
 input string  stoploss_settings       = "=== Paramètres de Stop Loss ===";
-enum StopType {SL_Classique, SL_Suiveur, GridTrading};
+enum StopType {SL_Classique, GridTrading, SL_Suiveur, low_medium_high};
 input StopType StopLossType           = SL_Classique;    // Type de Stop Loss
 input string  ecart13                = "";
 input string  sl_classique_settings   = "--- Paramètres SL Classique ---";
 input double  StopLossCurrency        = 1.0;             // Stop Loss en devise (0 pour aucun SL)
 input double  TakeProfitCurrency      = 1.0;             // Take Profit en devise (0 pour aucun TP)
 input string  ecart14                = "";
-input string  sl_suiveur_settings     = "=== Paramètres du SL suiveur ===";
-input string  reglageslsuiveur        = "--- réglage SLsuiveur ---";
-input double  InpSeuilDeclenchement   = 1.5;             // Seuil de déclenchement en devise
-input bool    InpActivationRespiration = true;           // Activation de la respiration
-input double  InpRespiration          = 1.0;             // Respiration pour le seuil de déclenchement en devise
-input double  InpRespirationSL        = 0.5;             // Respiration pour le SL suiveur en devise
-input double  InpSLsuiveur            = 30.0;            // Distance du SL suiveur en devises
-input string  ecart15                 = "";
 //--- Paramètres pour le Grid Trading
 input string  grid_settings           = "--- Paramètres du Grid Trading ---";
 input double  GridTakeProfitPoints    = 100;             // Take Profit en devise
 input double  GridDistancePoints      = 50;              // Distance nouvelle position du grid en devise
 input int     GridMaxOrders           = 5;               // Nombre maximum de positions dans le grid
+input string  ecart15                 = "";
+//--- Paramètres pour le type de risque
+input string  typerisque              = "--- Paramètres Low, medium, high ---";
+enum Typepourcentage {Low_risque, Medium_risque, High_risque};
+input Typepourcentage Type_pourcentage= Low_risque;      // Low(TP1%,SL10%), Medium(Tp2%,SL20%), High(TP3%,SL30%)
+input int     TPviser                 = 10;              // Tp visée
+input string  ecart16                 = "";
+input string  reglageslsuiveur        = "--- réglage SL suiveur ---";
+input bool    activationsls           = false;            // Activation du SL suiveur
+input double  InpSeuilDeclenchement   = 1.5;             // Seuil de déclenchement en devise
+input bool    InpActivationRespiration = true;           // Activation de la respiration
+input double  InpRespiration          = 1.0;             // Respiration pour le seuil de déclenchement en devise
+input double  InpRespirationSL        = 0.5;             // Respiration pour le SL suiveur en devise
+input double  InpSLsuiveur            = 30.0;            // Distance du SL suiveur en devises
+
 
 //--- Variables pour le SL suiveur
 bool seuil_declenche_actif = false;
@@ -1016,6 +1021,18 @@ if (volume <= 0)
                Print("Position ouverte avec Stop Loss Classique pour ", symbol);
             }
          }
+          // ouvrir la position avec Type de risque low medium high
+          else if (StopLossType == low_medium_high)
+            {
+            double slLevel, tpLevel;
+            ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY;
+            double volumeCalcule = CalculateLotAndRisk(symbol, orderType, Type_pourcentage, TPviser, slLevel, tpLevel);
+      
+            if (OpenPositionWithPercentageSL(symbol, signal, volumeCalcule, slLevel, tpLevel))
+            {
+               Print("Position ouverte avec Stop Loss Pourcentage pour ", symbol);
+            }
+         }
          // Ajoutez d'autres types de Stop Loss ici si nécessaire
       }
       else if (signal == Vente && trend != TrendHaussiere)
@@ -1028,6 +1045,19 @@ if (volume <= 0)
                Print("Position ouverte avec Stop Loss Classique pour ", symbol);
             }
          }
+         // ouvrir la position avec Type de risque low medium high
+         else if (StopLossType == low_medium_high)
+         {
+            double slLevel, tpLevel;
+            ENUM_ORDER_TYPE orderType = ORDER_TYPE_SELL;
+            double volumeCalcule = CalculateLotAndRisk(symbol, orderType, Type_pourcentage, TPviser, slLevel, tpLevel);
+      
+            if (OpenPositionWithPercentageSL(symbol, signal, volumeCalcule, slLevel, tpLevel))
+            {
+               Print("Position ouverte avec Stop Loss Pourcentage pour ", symbol);
+            }
+         }
+
          // Ajoutez d'autres types de Stop Loss ici si nécessaire
       }
       else
@@ -2110,6 +2140,18 @@ void UpdateExistingPositions()
                // Insérer ici la logique générale pour ce cas
             }
             break;
+          case low_medium_high:
+            if (UseMagicNumber && positionMagicNumber == MagicNumber)
+            {
+               // Logique pour le Grid Trading avec le même Magic Number
+               // Insérer ici la logique spécifique pour ce cas
+            }
+            else if (!UseMagicNumber)
+            {
+               // Logique pour le Grid Trading sans restriction de Magic Number
+               // Insérer ici la logique générale pour ce cas
+            }
+            break;
 
          default:
             Print("Type de Stop Loss non reconnu: ", StopLossType);
@@ -2565,24 +2607,6 @@ double CalculateVolume(string symbol)
    {
       lotSize = FixedLotSize; // Utiliser directement la taille fixe configurée
    }
-   else if (LotSizeType == Martingale)
-   {
-      int symbolIndex = -1;
-      for (int i = 0; i < ArraySize(ActiveSymbols); i++)
-      {
-         if (ActiveSymbols[i] == symbol)
-         {
-            symbolIndex = i;
-            break;
-         }
-      }
-
-      if (symbolIndex >= 0)
-      {
-         int attempts = MartingaleAttempts[symbolIndex];
-         lotSize = MartingaleStartLot * MathPow(MartingaleMultiplier, attempts);
-      }
-   }
 
    // Vérifier les limites de lot
    double minLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
@@ -2946,7 +2970,62 @@ if (slSuiveur > 0.0)
                 lines[lineIndex++] = "-------------------------------------------";
        
     // -------------------------------------------------------
-    // SECTION 5 : News
+    // SECTION 5 : SL pourcentage
+    // -------------------------------------------------------
+        if (StopLossType == low_medium_high)
+    {
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "SL pourcentage : (True)";
+
+// D'abord, définissez les pourcentages en fonction du type de risque
+double riskPercentage = 0.0;
+double slPercentage = 0.0;
+double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+
+switch(Type_pourcentage)
+{
+case Low_risque:
+riskPercentage = 0.01; // 1%
+slPercentage = 0.10; // 20%
+break;
+case Medium_risque:
+riskPercentage = 0.02; // 2%
+slPercentage = 0.20; // 20%
+break;
+case High_risque:
+riskPercentage = 0.03; // 3%
+slPercentage = 0.30; // 30%
+break;
+}
+
+// Calculer les valeurs en devise
+double tpDevise = equity * riskPercentage;
+double slDevise = equity * slPercentage;
+
+// Calculer le lot
+double slLevel, tpLevel;
+ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY; // Le type d'ordre n'affecte pas le calcul du lot ici
+double lotSize = CalculateLotAndRisk(_Symbol, orderType, Type_pourcentage, TPviser, slLevel, tpLevel);
+
+// Ajouter les lignes au tableau
+ArrayResize(lines, lineIndex + 1);
+lines[lineIndex++] = StringFormat("Lots: %.2f, TP : %.2f €, SL : %.2f €", lotSize, tpDevise, slDevise);
+    
+    }
+    else
+    {
+        ArrayResize(lines, lineIndex + 1);
+        lines[lineIndex++] = "SL pourcentage (False)";
+        
+ArrayResize(lines, lineIndex + 1);      
+lines[lineIndex++] = "Lots: 0.00, TP : 0€, SL : 0€";
+
+    }
+                ArrayResize(lines, lineIndex + 1);
+                lines[lineIndex++] = "-------------------------------------------";
+    
+    // -------------------------------------------------------
+    // SECTION 6 : News
     // -------------------------------------------------------
     if (!UseNewsFilter)
     {
@@ -3243,70 +3322,6 @@ double NormalizeVolume(string symbol, double volume)
 }
 
 //+------------------------------------------------------------------+
-//| Fonction de gestion de la martingale après une perte             |
-//+------------------------------------------------------------------+
-void ManageMartingale(string symbol, bool isWin)
-{
-   if (LotSizeType != Martingale)
-      return;
-
-   // Trouver l'index du symbole
-   int symbolIndex = -1;
-   for (int i = 0; i < ArraySize(ActiveSymbols); i++)
-   {
-      if (ActiveSymbols[i] == symbol)
-      {
-         symbolIndex = i;
-         break;
-      }
-   }
-
-   if (symbolIndex == -1)
-      return;
-
-   if (isWin)
-   {
-      // Réinitialiser les tentatives après un gain
-      MartingaleAttempts[symbolIndex] = 0;
-   }
-   else
-   {
-      // Augmenter le compteur de tentatives après une perte
-      MartingaleAttempts[symbolIndex]++;
-
-      // Vérifier et afficher le nouveau volume
-      double nextVolume = MartingaleStartLot * MathPow(MartingaleMultiplier, MartingaleAttempts[symbolIndex]);
-      nextVolume = NormalizeVolume(symbol, nextVolume); // Utilisation de la fonction personnalisée
-      Print("Martingale sur ", symbol, " - Prochaine tentative: ", MartingaleAttempts[symbolIndex],
-            " - Prochain volume: ", nextVolume);
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction de réinitialisation de la martingale                     |
-//+------------------------------------------------------------------+
-void ResetMartingale(string symbol = "")
-{
-    if(symbol == "")
-    {
-        // Réinitialiser pour tous les symboles
-        ArrayInitialize(MartingaleAttempts, 0);
-    }
-    else
-    {
-        // Réinitialiser pour un symbole spécifique
-        for(int i = 0; i < ArraySize(ActiveSymbols); i++)
-        {
-            if(ActiveSymbols[i] == symbol)
-            {
-                MartingaleAttempts[i] = 0;
-                break;
-            }
-        }
-    }
-}
-
-//+------------------------------------------------------------------+
 //| Fonction de mise à jour des statistiques                          |
 //+------------------------------------------------------------------+
 void UpdateTradingStats(string symbol, double profit, double volume)
@@ -3472,6 +3487,78 @@ void CalculateTrailingSLTP(string symbol, ENUM_ORDER_TYPE orderType, double &sl,
 
    sl = NormalizeDouble(currentPrice - slPoints * point, _Digits);
    tp = NormalizeDouble(currentPrice + tpPoints * point, _Digits);
+}
+
+//+------------------------------------------------------------------+
+//| Fonction pour calculer les lots suivant type de risque           |
+//+------------------------------------------------------------------+
+double CalculateLotAndRisk(string symbol, ENUM_ORDER_TYPE orderType, Typepourcentage riskType, int targetTP, double &sl, double &tp)
+{
+   if (IsPositionOpen(symbol) == true)
+   {
+      return false;
+   }
+// Récupérer l'équité du compte
+double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+
+// Définir les pourcentages en fonction du type de risque
+double riskPercentage = 0.0;
+double slPercentage = 0.0;
+
+switch(riskType)
+{
+case Low_risque:
+riskPercentage = 0.01; // 1%
+slPercentage = 0.10; // 10%
+break;
+case Medium_risque:
+riskPercentage = 0.02; // 2%
+slPercentage = 0.20; // 20%
+break;
+case High_risque:
+riskPercentage = 0.03; // 3%
+slPercentage = 0.30; // 30%
+break;
+}
+
+// Calculer le montant risqué en devise
+double riskAmount = equity * riskPercentage;
+
+// Récupérer les informations du symbole
+double pointValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+
+// Calculer le lot nécessaire pour atteindre le profit cible avec le nombre de points visé
+double lotSize = riskAmount / (targetTP * pointValue);
+lotSize = NormalizeDouble(lotSize, 2); // Passage a 2 decimals
+
+// Normaliser la taille du lot selon les limites du broker
+double minLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+double maxLot = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+double lotStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+
+lotSize = MathMin(maxLot, MathMax(minLot, NormalizeDouble(lotSize, 2)));
+
+// Calculer les points pour le SL
+double slPoints = (equity * slPercentage) / (lotSize * pointValue);
+
+// Récupérer le prix d'ouverture
+double openPrice = (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
+
+// Calculer les niveaux de SL et TP
+if(orderType == ORDER_TYPE_BUY)
+{
+sl = NormalizeDouble(openPrice - slPoints * point, digits);
+tp = NormalizeDouble(openPrice + targetTP * point, digits);
+}
+else if(orderType == ORDER_TYPE_SELL)
+{
+sl = NormalizeDouble(openPrice + slPoints * point, digits);
+tp = NormalizeDouble(openPrice - targetTP * point, digits);
+}
+
+return lotSize;
 }
 
 //+------------------------------------------------------------------+
@@ -3641,6 +3728,12 @@ bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, doubl
       CalculateGridSLTP(symbol, orderType, sl, tp, slPercentage, tpPercentage, slPoints, tpPoints);
    }
 
+   else if (StopLossType == low_medium_high)
+   {
+   volume = CalculateLotAndRisk(symbol, orderType, Type_pourcentage, TPviser, sl, tp);
+   }
+
+
    // Préparer la structure MqlTradeRequest
    MqlTradeRequest request;
    MqlTradeResult result;
@@ -3804,6 +3897,41 @@ bool OpenPositionWithClassicSL(string symbol, CrossSignal signal, double volume)
    }
    }
    return false;
+}
+
+//+-----------------------------------------------------------------------------------+
+// Fonction pour ouvrir une position en fonction du risque low medium ou high         |
+//+-----------------------------------------------------------------------------------+
+bool OpenPositionWithPercentageSL(string symbol, CrossSignal signal, double volume, double slLevel, double tpLevel)
+{
+   MqlTradeRequest request = {};
+   MqlTradeResult result = {};
+   
+   request.action = TRADE_ACTION_DEAL;
+   request.symbol = symbol;
+   request.volume = volume;
+   request.type = (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   request.price = (request.type == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : SymbolInfoDouble(symbol, SYMBOL_BID);
+   request.sl = slLevel;
+   request.tp = tpLevel;
+   request.deviation = MaxSlippagePoints;
+   request.magic = MagicNumber;
+   request.comment = "";
+   request.type_filling = ORDER_FILLING_FOK;
+
+   if(!OrderSend(request, result))
+   {
+      Print("Erreur d'ouverture de position : ", GetLastError());
+      return false;
+   }
+   
+   if(result.retcode != TRADE_RETCODE_DONE)
+   {
+      Print("Erreur d'ouverture de position. Code de retour : ", result.retcode);
+      return false;
+   }
+   
+   return true;
 }
 
 //+-----------------------------------------------------------------------------------+
