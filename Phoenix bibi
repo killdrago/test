@@ -13,7 +13,6 @@
 #include <Arrays\ArrayInt.mqh>
 #include <ChartObjects\ChartObject.mqh>
 #include <Arrays\ArrayString.mqh>
-#include <ChartObjects/ChartObjectsTxtControls.mqh>
 
 // Définitions des objets pour l'affichage
 #define TRIGGER_OBJECT_NAME "TS_Trigger_Level"
@@ -60,8 +59,6 @@ CTrade trade;
 CPositionInfo position;
 
 //--- Paramètres d'entrée
-input string  activIA                 = "=== Activation IA ===";
-input bool    IA                      = true;            // Utiliser IA
 input string  magic_settings          = "=== Gestion du Magic Number ===";
 input bool    UseMagicNumber          = true;            // False = Manuel + Tous magic
 input int     MagicNumber             = 123456;          // Magic Number
@@ -204,18 +201,6 @@ bool     g_PreviousUseNewsFilter     = false;  // Pour UseNewsFilter
 int      g_PreviousFilterMinutesBefore = -1;  // Pour NewsFilterMinutesBefore
 int      g_PreviousFilterMinutesAfter  = -1;  // Pour NewsFilterMinutesAfter
 
-// Variables globales pour lIA
-#define INPUT_SIZE 5      // Nombre d'entrées
-#define HIDDEN_SIZE 4     // Nombre de neurones dans la couche cachée
-#define OUTPUT_SIZE 1     // Nombre de sorties
-double weights_hidden_output[HIDDEN_SIZE][OUTPUT_SIZE];
-double weights_input_hidden[INPUT_SIZE][HIDDEN_SIZE];
-double bias_output[OUTPUT_SIZE];
-double bias_hidden[HIDDEN_SIZE];
-double learning_rate = 0.01;     // Taux d'apprentissage
-CChartObjectButton button;
-CChartObjectEdit   edit;
-CChartObjectLabel  label;
 
 //--- Variables pour les handles des indicateurs
 int           MA_Handle1[];      // Handles pour les moyennes mobiles
@@ -283,67 +268,6 @@ void RemoveAllIndicators()
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   // DEBUT IA
-   // Initialiser le réseau de neurones
-   InitializeNetwork();
-
-   // Vérifier si des paramètres entraînés existent déjà
-   if (FileIsExist("network_parameters.bin"))
-   {
-      // Charger les paramètres entraînés
-      LoadNetworkParameters();
-      Print("Paramètres du réseau de neurones chargés avec succès.");
-   }
-   else
-   {
-      // Entraîner le réseau avec des données historiques
-      double training_inputs[][INPUT_SIZE];
-      double training_targets[];
-      int num_samples = 1000; // Nombre d'exemples d'entraînement (à ajuster)
-      ArrayResize(training_inputs, num_samples);
-      ArrayResize(training_targets, num_samples);
-
-      // Remplir les données d'entraînement
-      for (int i = 0; i < num_samples; i++)
-      {
-         // Créer un tableau temporaire pour stocker les données collectées
-         double inputs[INPUT_SIZE];
-         CollectIndicatorData(inputs, _Symbol, PERIOD_CURRENT, i + 1);
-
-         // Copie manuelle dans training_inputs
-         for (int j = 0; j < INPUT_SIZE; j++)
-         {
-            training_inputs[i][j] = inputs[j];
-         }
-
-         // Définir la cible (target) : 1 pour hausse, 0 pour baisse
-         double current_close = iClose(_Symbol, PERIOD_CURRENT, i + 1);
-         double future_close = iClose(_Symbol, PERIOD_CURRENT, i - 4); // 5 bougies plus tard
-         training_targets[i] = (future_close > current_close) ? 1.0 : 0.0;
-      }
-
-      // Entraîner le réseau
-      TrainNetwork(training_inputs, training_targets, 100); // 100 epochs (à ajuster)
-      Print("Entraînement du réseau de neurones terminé.");
-
-      // Sauvegarder les paramètres entraînés
-      SaveNetworkParameters();
-      Print("Paramètres du réseau de neurones sauvegardés.");
-   }
-
-   // Initialiser l'interface graphique pour interagir avec l'IA
-   button.Create(0, "PredictButton", 0, 20, 20, 100, 40);
-   button.Description("Obtenir Prédiction");
-   edit.Create(0, "QuestionEdit", 0, 20, 70, 200, 20);
-   ObjectSetString(0, "QuestionEdit", OBJPROP_TEXT, ""); // Correction de SetString
-   label.Create(0, "AnswerLabel", 0, 20, 100);
-   ObjectSetString(0, "AnswerLabel", OBJPROP_TEXT, "Réponse : "); // Correction de SetString
-
-   // Ajuster la taille de l'étiquette (facultatif, pour correspondre à votre intention initiale)
-   ObjectSetInteger(0, "AnswerLabel", OBJPROP_XSIZE, 300); // Largeur de l'étiquette
-   ObjectSetInteger(0, "AnswerLabel", OBJPROP_YSIZE, 20); // Hauteur de l'étiquette
-   // FIN IA
-
    // Initialiser la variable lastBarTime avec l'heure de la dernière bougie pour le FVG
     lastBarTime = iTime(Symbol(), Period(), 0);
    // Créer un indicateur RSI
@@ -391,18 +315,6 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-
-//DEBUT IA
-// Sauvegarder les paramètres du réseau avant de quitter
-   SaveNetworkParameters();
-   Print("Paramètres du réseau de neurones sauvegardés avant fermeture.");
-
-   // Supprimer les objets graphiques
-   ObjectsDeleteAll(0, "PredictButton");
-   ObjectsDeleteAll(0, "QuestionEdit");
-   ObjectsDeleteAll(0, "AnswerLabel");
-//FIN IA
-
   // Libérer le handle de l'indicateur
    IndicatorRelease(RSIHandle);
 
@@ -433,54 +345,6 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
 {
-//DEBUT IA
-   static datetime last_update = 0;
-   datetime current_time = TimeCurrent();
-
-   // Mettre à jour la paire et l'UT toutes les heures (ou autre intervalle)
-   if (current_time - last_update >= 3600)
-   {
-      string best_pair = ChooseBestPair();
-      ENUM_TIMEFRAMES best_tf = ChooseBestTimeframe(best_pair);
-      Print("Meilleure paire : ", best_pair, ", Meilleure UT : ", EnumToString(best_tf));
-      last_update = current_time;
-   }
-
-   // Exemple : Faire une prédiction à chaque nouvelle bougie
-   if (IsNewBar())
-   {
-      double inputs[INPUT_SIZE];
-      CollectIndicatorData(inputs, _Symbol, PERIOD_CURRENT); // Assure-toi que cette ligne utilise les bons paramètres
-
-      double hidden[HIDDEN_SIZE];
-      double output[OUTPUT_SIZE];
-      double probability = ForwardPropagation(inputs, hidden, output);
-
-      // Afficher la prédiction (exemple)
-      Print("Probabilité de hausse : ", DoubleToString(probability * 100, 2), "%");
-
-      // Prendre une décision de trading (exemple simplifié)
-      if (probability > 0.7) // Seuil pour acheter
-      {
-         double lot_size = AdjustLotSize(probability);
-         double sl = CalculateStopLoss(); // À coder
-         double tp = CalculateTakeProfit(); // À coder
-         TradeBuy(lot_size, sl, tp, _Symbol); // Appel corrigé avec 4 paramètres
-      }
-      else if (probability < 0.3) // Seuil pour vendre
-      {
-         double lot_size = AdjustLotSize(1.0 - probability);
-         double sl = CalculateStopLoss(); // À coder
-         double tp = CalculateTakeProfit(); // À coder
-         TradeSell(lot_size, sl, tp, _Symbol); // Appel corrigé avec 4 paramètres
-      }
-
-      // Auto-apprentissage : Mettre à jour le réseau avec les nouvelles données
-      double target = DetermineTarget(0); // À coder (par exemple, hausse ou baisse réelle)
-      Backpropagation(inputs, hidden, output, target);
-   }
-//FIN IA
-
  // Suppresion des limitorder en grid
    if (StopLossType == GridTrading)
    {
@@ -623,48 +487,8 @@ void OnTick()
          continue; // Passer au symbole suivant
       }
 
-
-         // ACTIVATION IA
-         if (IA == true)
-         {
-            // Étape 1 : Collecter les données des indicateurs
-            double inputs[INPUT_SIZE];
-            CollectIndicatorData(inputs, symbol, PERIOD_CURRENT);
-
-            // Étape 2 : Faire une prédiction avec le réseau de neurones
-            double hidden[HIDDEN_SIZE];
-            double output[OUTPUT_SIZE];
-            double probability = ForwardPropagation(inputs, hidden, output);
-
-            // Étape 3 : Afficher la prédiction
-            Print("Probabilité de hausse pour ", symbol, " : ", DoubleToString(probability * 100, 2), "%");
-
-            // Étape 4 : Prendre une décision de trading
-            if (probability > 0.7) // Seuil pour acheter
-            {
-               double lot_size = AdjustLotSize(probability);
-               double sl = CalculateStopLoss(); // À coder
-               double tp = CalculateTakeProfit(); // À coder
-               TradeBuy(lot_size, sl, tp, symbol);
-            }
-            else if (probability < 0.3) // Seuil pour vendre
-            {
-               double lot_size = AdjustLotSize(1.0 - probability);
-               double sl = CalculateStopLoss(); // À coder
-               double tp = CalculateTakeProfit(); // À coder
-               TradeSell(lot_size, sl, tp, symbol);
-            }
-
-            // Étape 5 : Auto-apprentissage (mise à jour du réseau de neurones)
-            double target = DetermineTarget(0); // Appel explicite avec shift = 0
-            Backpropagation(inputs, hidden, output, target);
-         }
-         else
-         {
-// Trading manuel ou autres logiques d'exécution d'ordres
       // Vérifier les signaux et ouvrir des positions si nécessaire pour ce symbole
       CheckForNewSignals(symbol, i); // <--- Fonction CheckForNewSignals modifiée (étape 6)
-        }
    }
 
     // Mettre à jour les positions existantes
@@ -698,7 +522,6 @@ bool IsMarketConditionsSuitableForSymbol(string symbol)
 
    return true; // Conditions de marché OK pour ce symbole
 }
-
 //+------------------------------------------------------------------+
 //| Fonction pour vérifier si les conditions de marché sont bonnes    |
 //+------------------------------------------------------------------+
@@ -1109,6 +932,7 @@ void CheckForNewSignals(string symbol, int symbolIndex)
    // Vérifier les conditions de trading
    if (!IsMarketConditionsSuitableForSymbol(symbol))
    {
+      Print("Conditions de marché non favorables pour ", symbol);
       return;
    }
    
@@ -1185,11 +1009,13 @@ double volume = CalculateVolume(symbol);
 
 if (LotSizeType == LotFixe && volume > FixedLotSize)
 {
+   Print("Volume calculé (", volume, ") supérieur à FixedLotSize (", FixedLotSize, ") pour ", symbol, ". Ordre annulé.");
    return;
 }
 
 if (volume <= 0)
 {
+   Print("Volume invalide (", volume, ") pour ", symbol);
    return;
 }
 // Vérifier la tendance avant de prendre des décisions d'achat ou de vente
@@ -1198,11 +1024,14 @@ if (signal == Achat && trend != TrendBaissiere)
    // Ouvrir la position avec Stop Loss Classique
    if (StopLossType == SL_Classique)
    {
+      Print("Tentative d'ouverture avec SL Classique pour ", symbol, " (Achat)");
       if (OpenPositionWithClassicSL(symbol, signal, volume))
       {
+         Print("Position ouverte avec Stop Loss Classique pour ", symbol);
       }
       else
       {
+         Print("Erreur lors de l'ouverture de la position avec SL Classique pour ", symbol);
       }
    }
    // Ouvrir la position avec Type de risque low medium high en BUY
@@ -1217,23 +1046,29 @@ if (signal == Achat && trend != TrendBaissiere)
       {
          if (OpenPositionWithPercentageSL(symbol, signal, volumeCalcule, slLevel, tpLevel))
          {
+            Print("Position ouverte avec Stop Loss Pourcentage pour ", symbol, ", TP: ", tpLevel, ", SL: ", slLevel);
          }
          else
          {
+            Print("Erreur lors de l'ouverture de la position avec Stop Loss Pourcentage pour ", symbol);
          }
       }
       else
       {
+         Print("Erreur: Volume calculé invalide pour ", symbol);
       }
    }
    // Ouvrir la position avec Grid Trading en BUY
    else if (StopLossType == GridTrading)
    {
+      Print("Tentative d'ouverture avec Grid Trading pour ", symbol, " (Achat)");
       if (OpenPositionWithGridTrading(symbol, signal, volume))
       {
+         Print("Position ouverte avec Grid Trading pour ", symbol);
       }
       else
       {
+         Print("Erreur lors de l'ouverture de la position avec Grid Trading pour ", symbol);
       }
    }
    // Ajoutez d'autres types de Stop Loss ici si nécessaire
@@ -1243,16 +1078,20 @@ else if (signal == Vente && trend != TrendHaussiere)
    // Ouvrir la position avec Stop Loss Classique
    if (StopLossType == SL_Classique)
    {
+      Print("Tentative d'ouverture avec SL Classique pour ", symbol, " (Vente)");
       if (OpenPositionWithClassicSL(symbol, signal, volume))
       {
+         Print("Position ouverte avec Stop Loss Classique pour ", symbol);
       }
       else
       {
+         Print("Erreur lors de l'ouverture de la position avec SL Classique pour ", symbol);
       }
    }
    // Ouvrir la position avec Type de risque low medium high en SELL
    else if (StopLossType == low_medium_high)
    {
+      Print("Tentative d'ouverture avec low_medium_high pour ", symbol, " (Vente)");
       double slLevel, tpLevel;
       ENUM_ORDER_TYPE orderType = ORDER_TYPE_SELL;
       double volumeCalcule = CalculateLotAndRisk(symbol, orderType, Type_pourcentage, TPpourcentage, SLpourcentage, slLevel, tpLevel);
@@ -1261,29 +1100,36 @@ else if (signal == Vente && trend != TrendHaussiere)
       {
          if (OpenPositionWithPercentageSL(symbol, signal, volumeCalcule, slLevel, tpLevel))
          {
+            Print("Position ouverte avec Stop Loss Pourcentage pour ", symbol, ", TP: ", tpLevel, ", SL: ", slLevel);
          }
          else
          {
+            Print("Erreur lors de l'ouverture de la position avec Stop Loss Pourcentage pour ", symbol);
          }
       }
       else
       {
+         Print("Erreur: Volume calculé invalide pour ", symbol);
       }
    }
    // Ouvrir la position avec Grid Trading en SELL
    else if (StopLossType == GridTrading)
    {
+      Print("Tentative d'ouverture avec Grid Trading pour ", symbol, " (Vente)");
       if (OpenPositionWithGridTrading(symbol, signal, volume))
       {
+         Print("Position ouverte avec Grid Trading pour ", symbol);
       }
       else
       {
+         Print("Erreur lors de l'ouverture de la position avec Grid Trading pour ", symbol);
       }
    }
    // Ajoutez d'autres types de Stop Loss ici si nécessaire
 }
 else
 {
+   Print("Signal non pris en compte en raison de la tendance du marché.");
 }
    }
 
@@ -4629,6 +4475,7 @@ bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, doubl
    if (OrderSend(request, result))
    {
       Print("Position ouverte pour ", symbol, " - Type: ", EnumToString(orderType), " - Volume: ", volume);
+
       // Envoyer des notifications
       SendNotifications(symbol, orderType, volume, request.price, sl, tp);
 
@@ -4639,6 +4486,7 @@ bool OpenPosition(string symbol, ENUM_ORDER_TYPE orderType, double volume, doubl
    }
    else
    {
+      Print("Erreur lors de l'ouverture de la position pour ", symbol, " - Erreur: ", GetLastError());
       return false;
    }
 }
@@ -4796,6 +4644,7 @@ bool OpenPositionWithTrailingSL(string symbol, CrossSignal signal, double volume
 
    if (OpenPosition(symbol, (signal == Achat) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, volume, sl, tp))
    {
+      Print("Position ouverte avec Stop Loss Suiveur pour ", symbol);
       return true;
    }
    return false;
@@ -5066,1223 +4915,6 @@ void SupprimerObjetsAutresStrategies(StrategyType currentStrategy)
             }
         }
     }
-}
-
-//+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-//| CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA   CODAGE IA     |
-//+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+ 
-
-//+------------------------------------------------------------------+
-//| Fonctions d'activation                                            |
-//+------------------------------------------------------------------+
-double ReLU(double x)
-{
-   return MathMax(0, x);
-}
-
-double ReLU_Derivative(double x)
-{
-   return x > 0 ? 1.0 : 0.0;
-}
-
-double Sigmoid(double x)
-{
-   return 1.0 / (1.0 + MathExp(-x));
-}
-
-double SigmoidDerivative(double x)
-{
-   double sigmoid = Sigmoid(x);
-   return sigmoid * (1.0 - sigmoid);
-}
-
-//+------------------------------------------------------------------+
-//| Initialisation des poids et biais                                 |
-//+------------------------------------------------------------------+
-void InitializeNetwork()
-{
-   // Initialiser les poids et biais avec des valeurs aléatoires
-   for (int i = 0; i < INPUT_SIZE; i++)
-   {
-      for (int j = 0; j < HIDDEN_SIZE; j++)
-      {
-         weights_input_hidden[i][j] = MathRand() / 32767.0 - 0.5; // Valeurs entre -0.5 et 0.5
-      }
-   }
-   for (int i = 0; i < HIDDEN_SIZE; i++)
-   {
-      for (int j = 0; j < OUTPUT_SIZE; j++)
-      {
-         weights_hidden_output[i][j] = MathRand() / 32767.0 - 0.5;
-      }
-   }
-   for (int i = 0; i < HIDDEN_SIZE; i++)
-   {
-      bias_hidden[i] = MathRand() / 32767.0 - 0.5;
-   }
-   for (int i = 0; i < OUTPUT_SIZE; i++)
-   {
-      bias_output[i] = MathRand() / 32767.0 - 0.5;
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Propagation avant (Forward Propagation)                           |
-//+------------------------------------------------------------------+
-double ForwardPropagation(double &inputs[], double &hidden[], double &output[])
-{
-    // Assurez-vous que les tableaux ont la bonne taille
-    ArrayResize(hidden, HIDDEN_SIZE);
-    ArrayResize(output, OUTPUT_SIZE);
-
-    // Vérifiez que les matrices de poids sont bien initialisées
-    if (ArrayRange(weights_input_hidden, 0) == 0 || ArrayRange(weights_hidden_output, 0) == 0)
-    {
-        Print("Erreur: Les poids du réseau ne sont pas initialisés !");
-        return 0.0;
-    }
-
-    // Calculer les sorties de la couche cachée
-    double z_hidden[];
-    ArrayResize(z_hidden, HIDDEN_SIZE);
-
-    for (int j = 0; j < HIDDEN_SIZE; j++)
-    {
-        z_hidden[j] = bias_hidden[j];
-        for (int i = 0; i < INPUT_SIZE; i++)
-        {
-            // Vérification correcte de l'index pour weights_input_hidden
-            if (i < ArrayRange(weights_input_hidden, 0) && j < ArrayRange(weights_input_hidden, 1))
-            {
-                z_hidden[j] += inputs[i] * weights_input_hidden[i][j];
-            }
-            else
-            {
-                Print("Erreur: Index invalide pour weights_input_hidden[", i, "][", j, "]");
-                // Pas de 'continue', car on veut arrêter la propagation en cas d'erreur grave
-                return 0.0; // Retourner 0 en cas d'erreur
-            }
-        }
-        hidden[j] = ReLU(z_hidden[j]);
-    }
-
-    // Calculer les sorties de la couche de sortie
-    double z_output[];
-    ArrayResize(z_output, OUTPUT_SIZE);
-
-    for (int j = 0; j < OUTPUT_SIZE; j++)
-    {
-        z_output[j] = bias_output[j];
-        for (int i = 0; i < HIDDEN_SIZE; i++)
-        {
-            // Vérification correcte de l'index pour weights_hidden_output
-            if (i < ArrayRange(weights_hidden_output, 0) && j < ArrayRange(weights_hidden_output, 1))
-            {
-                z_output[j] += hidden[i] * weights_hidden_output[i][j];
-            }
-            else
-            {
-                Print("Erreur: Index invalide pour weights_hidden_output[", i, "][", j, "]");
-                // Pas de 'continue', car on veut arrêter la propagation en cas d'erreur grave
-                return 0.0; // Retourner 0 en cas d'erreur
-            }
-        }
-        output[j] = Sigmoid(z_output[j]);
-    }
-
-    return output[0]; // Retourner la probabilité de hausse
-}
-
-//+------------------------------------------------------------------+
-//| Rétropropagation (Backpropagation)                                |
-//+------------------------------------------------------------------+
-void Backpropagation(double &inputs[], double &hidden[], double &output[], double target)
-{
-   // --- Couche de Sortie ---
-
-   // Calculer l'erreur et le delta de la couche de sortie (tableaux dynamiques)
-   double output_error[];
-   double output_delta[];
-   ArrayResize(output_error, OUTPUT_SIZE);
-   ArrayResize(output_delta, OUTPUT_SIZE);
-
-   for (int j = 0; j < OUTPUT_SIZE; j++)
-   {
-      output_error[j] = target - output[j]; // Erreur = cible - prédiction
-      output_delta[j] = output_error[j] * SigmoidDerivative(output[j]); // Delta = erreur * dérivée de sigmoïde
-   }
-
-   // Mettre à jour les poids et biais de la couche de sortie
-   for (int i = 0; i < HIDDEN_SIZE; i++)
-   {
-      for (int j = 0; j < OUTPUT_SIZE; j++)
-      {
-        // Verification des index avant modification
-        if(i < ArrayRange(weights_hidden_output, 0) && j < ArrayRange(weights_hidden_output, 1))
-        {
-          weights_hidden_output[i][j] += learning_rate * output_delta[j] * hidden[i];
-        }
-        else
-        {
-          Print("Erreur d'index weights_hidden_output: i=",i, ", j=",j);
-        }
-      }
-   }
-   for (int j = 0; j < OUTPUT_SIZE; j++)
-   {
-     if(j < ArraySize(bias_output))
-     {
-      bias_output[j] += learning_rate * output_delta[j];
-     }
-     else
-     {
-       Print("Erreur d'index bias_output: j=", j);
-     }
-   }
-
-   // --- Couche Cachée ---
-
-   // Calculer l'erreur et le delta de la couche cachée (tableaux dynamiques)
-   double hidden_error[];
-   double hidden_delta[];
-   ArrayResize(hidden_error, HIDDEN_SIZE);
-   ArrayResize(hidden_delta, HIDDEN_SIZE);
-
-   for (int i = 0; i < HIDDEN_SIZE; i++)
-   {
-      hidden_error[i] = 0.0;
-      for (int j = 0; j < OUTPUT_SIZE; j++)
-      {
-        // Verification des index
-        if(i < ArrayRange(weights_hidden_output, 0) && j < ArrayRange(weights_hidden_output, 1))
-        {
-          hidden_error[i] += output_delta[j] * weights_hidden_output[i][j];
-        }
-        else
-        {
-          Print("Erreur d'index weights_hidden_output dans hidden_error: i=", i, ", j=", j);
-        }
-      }
-      if(i < ArraySize(hidden))
-      {
-       hidden_delta[i] = hidden_error[i] * ReLU_Derivative(hidden[i]); // Delta = erreur * dérivée de ReLU
-      }
-      else
-      {
-        Print("Erreur d'index hidden: i=", i);
-      }
-   }
-
-   // Mettre à jour les poids et biais de la couche cachée
-   for (int i = 0; i < INPUT_SIZE; i++)
-   {
-      for (int j = 0; j < HIDDEN_SIZE; j++)
-      {
-        // Verification des index avant modification
-        if(i < ArrayRange(weights_input_hidden, 0) && j < ArrayRange(weights_input_hidden, 1))
-        {
-          weights_input_hidden[i][j] += learning_rate * hidden_delta[j] * inputs[i];
-        }
-        else
-        {
-          Print("Erreur d'index weights_input_hidden: i=", i, ", j=", j);
-        }
-      }
-   }
-   for (int j = 0; j < HIDDEN_SIZE; j++)
-   {
-    if(j < ArraySize(bias_hidden))
-    {
-     bias_hidden[j] += learning_rate * hidden_delta[j];
-    }
-    else
-    {
-      Print("Erreur d'index bias_hidden: j=", j);
-    }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour entraîner le réseau de neurones                     |
-//+------------------------------------------------------------------+
-void TrainNetwork(double &training_inputs[][], double &training_targets[], int epochs)
-{
-   double hidden[];
-   double output[];
-
-   ArrayResize(hidden, HIDDEN_SIZE);
-   ArrayResize(output, OUTPUT_SIZE);
-
-   for (int epoch = 0; epoch < epochs; epoch++)
-   {
-      for (int i = 0; i < ArraySize(training_targets); i++)
-      {
-         // Validate input array indices
-         if (i >= ArraySize(training_inputs))
-         {
-            Print("Error: Input index out of bounds.");
-            continue;
-         }
-
-         double inputs[];
-         ArrayResize(inputs, INPUT_SIZE);
-
-         // Safely copy input features
-         for (int j = 0; j < INPUT_SIZE; j++)
-         {
-            inputs[j] = training_inputs[i][j];
-         }
-
-         // Forward propagation
-         ForwardPropagation(inputs, hidden, output);
-
-         // Backpropagation
-         Backpropagation(inputs, hidden, output, training_targets[i]);
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour vérifier si une nouvelle bougie est apparue         |
-//+------------------------------------------------------------------+
-bool IsNewBar()
-{
-   static datetime last_bar_time = 0;
-   datetime current_bar_time = iTime(_Symbol, PERIOD_CURRENT, 0);
-   if (current_bar_time != last_bar_time)
-   {
-      last_bar_time = current_bar_time;
-      return true;
-   }
-   return false;
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour ajuster la taille du lot en fonction de la confiance|
-//+------------------------------------------------------------------+
-double AdjustLotSize(double probability)
-{
-   double base_lot_size = FixedLotSize; // Utiliser le paramètre existant de votre EA
-
-   // Ajuster en fonction du type de risque
-   double risk_factor = 1.0;
-   switch (Type_pourcentage)
-   {
-      case Verylow_risque: risk_factor = 0.1; break;
-      case Low_risque: risk_factor = 0.2; break;
-      case Medium_risque: risk_factor = 0.5; break;
-      case High_risque: risk_factor = 1.0; break;
-      case Veryhigh_risque: risk_factor = 2.0; break;
-   }
-
-   // Ajuster en fonction de la confiance (probabilité)
-   double confidence_factor = probability > 0.5 ? probability : 1.0 - probability;
-   return base_lot_size * risk_factor * confidence_factor;
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour calculer le Stop Loss (exemple simplifié)           |
-//+------------------------------------------------------------------+
-double CalculateStopLoss()
-{
-   // Exemple : Utiliser le dernier support comme SL pour un achat
-   double support = iLow(_Symbol, PERIOD_CURRENT, iLowest(_Symbol, PERIOD_CURRENT, MODE_LOW, 20, 1));
-   return support; // À ajuster selon votre logique
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour calculer le Take Profit (exemple simplifié)         |
-//+------------------------------------------------------------------+
-double CalculateTakeProfit()
-{
-   // Exemple : Utiliser la prochaine résistance comme TP pour un achat
-   double resistance = iHigh(_Symbol, PERIOD_CURRENT, iHighest(_Symbol, PERIOD_CURRENT, MODE_HIGH, 20, 1));
-   return resistance; // À ajuster selon votre logique
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour ouvrir une position d'achat (avec symbole)          |
-//+------------------------------------------------------------------+
-void TradeBuy(double lot_size, double sl, double tp, string symbol)
-{
-   CTrade trade_local; // Renommé pour éviter le conflit avec la variable globale 'trade'
-   if (UseNewsFilter)
-   {
-      // Vérifier si un événement important est proche
-      datetime current_time = TimeCurrent();
-      int news_sentiment = AnalyzeNewsSentiment(symbol, current_time);
-      if (news_sentiment < 0) // Éviter d'acheter si les news sont baissières
-         return;
-   }
-
-   // Récupérer les informations de tick (spread, ASK, BID) en une seule fois
-   MqlTick tick;
-   if (!SymbolInfoTick(symbol, tick))
-   {
-      Print("Erreur: Impossible de récupérer les informations de tick pour ", symbol);
-      return;
-   }
-
-   // Appliquer les filtres de spread et slippage (paramètres de l'EA)
-   double spread = (tick.ask - tick.bid) / SymbolInfoDouble(symbol, SYMBOL_POINT); // Calculer le spread en points
-   if (UseMaxSpreadFilter && spread > MaxSpreadPoints)
-   {
-      Print("Spread trop élevé pour ", symbol, ": ", spread, " > ", MaxSpreadPoints);
-      return;
-   }
-
-   // Obtenir le prix ASK actuel pour l'achat
-   double ask = tick.ask;
-
-   // Ouvrir la position
-   trade_local.Buy(lot_size, symbol, ask, sl, tp, "Achat IA");
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour ouvrir une position de vente (avec symbole)         |
-//+------------------------------------------------------------------+
-void TradeSell(double lot_size, double sl, double tp, string symbol)
-{
-   CTrade trade_local; // Renommé pour éviter le conflit avec la variable globale 'trade'
-   if (UseNewsFilter)
-   {
-      // Vérifier si un événement important est proche
-      datetime current_time = TimeCurrent();
-      int news_sentiment = AnalyzeNewsSentiment(symbol, current_time);
-      if (news_sentiment > 0) // Éviter de vendre si les news sont haussières
-         return;
-   }
-
-   // Récupérer les informations de tick (spread, ASK, BID) en une seule fois
-   MqlTick tick;
-   if (!SymbolInfoTick(symbol, tick))
-   {
-      Print("Erreur: Impossible de récupérer les informations de tick pour ", symbol);
-      return;
-   }
-
-   // Appliquer les filtres de spread et slippage (paramètres de l'EA)
-   double spread = (tick.ask - tick.bid) / SymbolInfoDouble(symbol, SYMBOL_POINT); // Calculer le spread en points
-   if (UseMaxSpreadFilter && spread > MaxSpreadPoints)
-   {
-      Print("Spread trop élevé pour ", symbol, ": ", spread, " > ", MaxSpreadPoints);
-      return;
-   }
-
-   // Obtenir le prix BID actuel pour la vente
-   double bid = tick.bid;
-
-   // Ouvrir la position
-   trade_local.Sell(lot_size, symbol, bid, sl, tp, "Vente IA");
-}
-
-//+------------------------------------------------------------------+
-//| Fonction appelée lors d'un événement sur le graphique             |
-//+------------------------------------------------------------------+
-void OnChartEvent(const int id, const long& lparam, const double& dparam, const string& sparam)
-{
-    if (id == CHARTEVENT_OBJECT_CLICK && sparam == "PredictButton")
-    {
-        // Récupérer la question ou commande saisie par l'utilisateur
-        string question = edit.GetString(OBJPROP_TEXT);
-
-        // Traiter la question
-
-        // --- "Quel est le signal actuel ?" ---
-        if (question == "Quel est le signal actuel ?")
-        {
-            // Utilisation de tableaux dynamiques
-            double inputs[];
-            double hidden[];
-            double output[];
-            ArrayResize(inputs, INPUT_SIZE);
-            ArrayResize(hidden, HIDDEN_SIZE);
-            ArrayResize(output, OUTPUT_SIZE);
-
-            CollectIndicatorData(inputs, _Symbol, PERIOD_CURRENT);
-            double probability = ForwardPropagation(inputs, hidden, output);
-            label.Description("Réponse : Probabilité de hausse = " + DoubleToString(probability * 100, 2) + "%");
-        }
-
-        // --- "Quelles sont tes performances ?" ---
-        else if (question == "Quelles sont tes performances ?")
-        {
-            double success_rate = CalculateSuccessRate();
-            label.Description("Réponse : Taux de succès = " + DoubleToString(success_rate * 100, 2) + "%");
-        }
-
-        // --- "Montre-moi l'importance des indicateurs" ---
-        else if (question == "Montre-moi l'importance des indicateurs")
-        {
-            double feature_importance[]; // Tableau dynamique
-            ArrayResize(feature_importance, INPUT_SIZE); // Redimensionnement
-            CalculateFeatureImportance(feature_importance); // Assure-toi que cette fonction est définie
-
-            string answer = "Réponse : Importance des indicateurs\n";
-            for(int i = 0; i < INPUT_SIZE; i++)
-            {
-                if(i == 0) answer += "RSI M15 : ";
-                else if(i == 1) answer += "RSI H1 : ";
-                else if(i == 2) answer += "MA Diff : ";
-                else if(i == 3) answer += "Ichimoku : ";
-                else if(i == 4) answer += "Volume : ";
-                answer += DoubleToString(feature_importance[i] * 100, 2) + "%\n";
-            }
-            label.Description(answer);
-        }
-
-        // --- Question non reconnue ---
-        else
-        {
-            label.Description("Réponse : Commande non reconnue. Essayez 'Quel est le signal actuel ?', 'Quelles sont tes performances ?', ou 'Montre-moi l'importance des indicateurs'.");
-        }
-
-        // Effacer le champ de texte après traitement (facultatif)
-        edit.SetString(OBJPROP_TEXT, "");
-    }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour calculer l'importance des indicateurs               |
-//+------------------------------------------------------------------+
-void CalculateFeatureImportance(double &feature_importance[])
-{
-   ArrayResize(feature_importance, INPUT_SIZE);
-   for (int i = 0; i < INPUT_SIZE; i++)
-   {
-      double importance = 0.0;
-      for (int j = 0; j < HIDDEN_SIZE; j++)
-      {
-         importance += MathAbs(weights_input_hidden[i][j]); // Somme des poids absolus
-      }
-      feature_importance[i] = importance;
-   }
-
-   // Normaliser pour obtenir des pourcentages
-   double total_importance = 0.0;
-   for (int i = 0; i < INPUT_SIZE; i++)
-   {
-      total_importance += feature_importance[i];
-   }
-   if (total_importance > 0)
-   {
-      for (int i = 0; i < INPUT_SIZE; i++)
-      {
-         feature_importance[i] /= total_importance;
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour analyser les news et déduire un sens majoritaire    |
-//+------------------------------------------------------------------+
-int AnalyzeNewsSentiment(string symbol, datetime current_time)
-{
-   // Récupérer les événements récents (par exemple, dans les dernières 24 heures)
-   MqlCalendarEvent events[];
-   if (!CalendarEventByCurrency(SymbolInfoString(symbol, SYMBOL_CURRENCY_BASE), events))
-      return 0; // Pas d'événements ou erreur
-
-   int sentiment_score = 0; // Score global : +1 haussier, -1 baissier, 0 neutre
-
-   for (int i = 0; i < ArraySize(events); i++)
-   {
-      // Récupérer les détails de l'événement
-      MqlCalendarValue values[];
-      datetime from = current_time - 24 * 60 * 60; // 24 heures avant
-      datetime to = current_time;
-      if (CalendarValueHistoryByEvent(events[i].id, values, from, to))
-      {
-         // Filtrer selon l'importance des news (paramètre de l'EA)
-         if ((NewsImportance == High && events[i].importance < 2) ||
-             (NewsImportance == High_Medium && events[i].importance < 1))
-            continue;
-
-         // Exemple simplifié : Associer un impact en fonction du type d'événement
-         string event_name = events[i].name;
-         int importance = events[i].importance; // 0 = faible, 1 = moyen, 2 = élevé
-
-         // Vérifier qu'il y a au moins une valeur pour comparer
-         if (ArraySize(values) > 0)
-         {
-            // Logique pour déterminer l'impact (à adapter selon vos besoins)
-            if (StringFind(event_name, "Taux d'intérêt") >= 0)
-            {
-               if (values[0].actual_value > values[0].prev_value) // Hausse des taux
-                  sentiment_score -= importance; // Baissier
-               else
-                  sentiment_score += importance; // Haussier
-            }
-            else if (StringFind(event_name, "PIB") >= 0)
-            {
-               if (values[0].actual_value > values[0].forecast_value) // PIB meilleur que prévu
-                  sentiment_score += importance; // Haussier
-               else
-                  sentiment_score -= importance; // Baissier
-            }
-            // Ajouter d'autres types d'événements selon vos besoins
-         }
-      }
-   }
-
-   // Retourner le sens majoritaire : +1 haussier, -1 baissier, 0 neutre
-   if (sentiment_score > 0) return 1;
-   else if (sentiment_score < 0) return -1;
-   else return 0;
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour choisir la meilleure paire à trader                 |
-//+------------------------------------------------------------------+
-string ChooseBestPair()
-{
-   string best_pair = _Symbol; // Par défaut, la paire actuelle
-   double best_score = -1.0;   // Score maximal
-
-   // Construire la liste des symboles actifs
-   BuildActiveSymbolList();
-
-   // Vérifier si la liste des symboles actifs est vide
-   if (ArraySize(ActiveSymbols) == 0)
-   {
-      Print("Aucun symbole actif disponible. Utilisation du symbole actuel : ", _Symbol);
-      return _Symbol;
-   }
-
-   // Évaluer chaque symbole actif
-   for (int i = 0; i < ArraySize(ActiveSymbols); i++)
-   {
-      string pair = ActiveSymbols[i];
-      double score = EvaluatePair(pair);
-      if (score > best_score)
-      {
-         best_score = score;
-         best_pair = pair;
-      }
-   }
-
-   return best_pair;
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour évaluer une paire                                   |
-//+------------------------------------------------------------------+
-double EvaluatePair(string pair)
-{
-   // Calculer la volatilité (ATR)
-   int atr_handle = iATR(pair, PERIOD_D1, 14); // Obtenir le handle de l'ATR
-   if (atr_handle == INVALID_HANDLE)
-   {
-      Print("Erreur: Impossible de créer le handle ATR pour ", pair);
-      return 0.0; // Retourner 0 en cas d'erreur
-   }
-
-   double atr_values[];
-   ArraySetAsSeries(atr_values, true);
-   if (CopyBuffer(atr_handle, 0, 1, 1, atr_values) <= 0) // Copier la valeur ATR à l'index 1
-   {
-      Print("Erreur lors de la copie des données ATR pour ", pair);
-      IndicatorRelease(atr_handle);
-      return 0.0; // Retourner 0 en cas d'erreur
-   }
-   IndicatorRelease(atr_handle); // Libérer le handle après utilisation
-   double atr = atr_values[0];
-
-   double volatility_score = atr / SymbolInfoDouble(pair, SYMBOL_POINT); // Normaliser par le point du symbole
-
-   // Calculer la force de la tendance (exemple avec Ichimoku)
-   int ichimoku_handle = iIchimoku(pair, PERIOD_D1, 9, 26, 52); // Obtenir le handle de l'Ichimoku
-   if (ichimoku_handle == INVALID_HANDLE)
-   {
-      Print("Erreur: Impossible de créer le handle Ichimoku pour ", pair);
-      return 0.0; // Retourner 0 en cas d'erreur
-   }
-
-   double tenkan[], kijun[];
-   ArraySetAsSeries(tenkan, true);
-   ArraySetAsSeries(kijun, true);
-   if (CopyBuffer(ichimoku_handle, 0, 1, 1, tenkan) <= 0 || // Tenkan-sen (buffer 0)
-       CopyBuffer(ichimoku_handle, 1, 1, 1, kijun) <= 0)     // Kijun-sen (buffer 1)
-   {
-      Print("Erreur lors de la copie des données Ichimoku pour ", pair);
-      IndicatorRelease(ichimoku_handle);
-      return 0.0; // Retourner 0 en cas d'erreur
-   }
-   IndicatorRelease(ichimoku_handle); // Libérer le handle après utilisation
-
-   double trend_score = MathAbs(tenkan[0] - kijun[0]); // Plus la différence est grande, plus la tendance est forte
-
-   // Calculer la précision de l'IA (exemple simplifié)
-   double accuracy_score = CalculateAccuracy(pair, PERIOD_D1); // À coder
-
-   // Score total (exemple de pondération)
-   double total_score = 0.4 * volatility_score + 0.4 * trend_score + 0.2 * accuracy_score;
-   return total_score;
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour choisir la meilleure unité de temps                 |
-//+------------------------------------------------------------------+
-ENUM_TIMEFRAMES ChooseBestTimeframe(string pair)
-{
-   ENUM_TIMEFRAMES best_tf = PERIOD_CURRENT; // Par défaut, l'UT actuelle
-   double best_score = -1.0;                 // Score maximal
-
-   // Liste des UT à évaluer
-   ENUM_TIMEFRAMES timeframes[] = {PERIOD_M15, PERIOD_H1, PERIOD_H4, PERIOD_D1};
-
-   // Évaluer chaque UT
-   for (int i = 0; i < ArraySize(timeframes); i++)
-   {
-      ENUM_TIMEFRAMES tf = timeframes[i];
-      double score = EvaluateTimeframe(pair, tf);
-      if (score > best_score)
-      {
-         best_score = score;
-         best_tf = tf;
-      }
-   }
-
-   return best_tf;
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour évaluer une unité de temps                          |
-//+------------------------------------------------------------------+
-double EvaluateTimeframe(string pair, ENUM_TIMEFRAMES timeframe)
-{
-   // Calculer la précision de l'IA sur cette UT
-   double accuracy_score = CalculateAccuracy(pair, timeframe); // À coder
-
-   // Calculer le rapport risque/rendement (exemple simplifié)
-   int atr_handle = iATR(pair, timeframe, 14); // Obtenir le handle de l'ATR
-   if (atr_handle == INVALID_HANDLE)
-   {
-      Print("Erreur: Impossible de créer le handle ATR pour ", pair, " sur ", EnumToString(timeframe));
-      return 0.0; // Retourner 0 en cas d'erreur
-   }
-
-   double atr_values[];
-   ArraySetAsSeries(atr_values, true);
-   if (CopyBuffer(atr_handle, 0, 1, 1, atr_values) <= 0) // Copier la valeur ATR à l'index 1
-   {
-      Print("Erreur lors de la copie des données ATR pour ", pair, " sur ", EnumToString(timeframe));
-      IndicatorRelease(atr_handle);
-      return 0.0; // Retourner 0 en cas d'erreur
-   }
-   IndicatorRelease(atr_handle); // Libérer le handle après utilisation
-   double atr = atr_values[0];
-
-   double risk_reward_score = atr / SymbolInfoDouble(pair, SYMBOL_POINT); // Utiliser SymbolInfoDouble pour obtenir le point
-
-   // Score total (exemple de pondération)
-   double total_score = 0.6 * accuracy_score + 0.4 * risk_reward_score;
-   return total_score;
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour calculer la précision de l'IA                       |
-//+------------------------------------------------------------------+
-double CalculateAccuracy(string pair, ENUM_TIMEFRAMES timeframe)
-{
-   // À coder : Analyser les prédictions passées de l'IA et les résultats réels
-   // Pour l'exemple, retourner une valeur fictive
-   // En pratique, vous devriez stocker les prédictions et les résultats réels dans un fichier ou un tableau
-   return 0.75; // 75% de précision
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour détecter les supports et résistances (avec symbole et UT) |
-//+------------------------------------------------------------------+
-void DetectSupportResistance(double &support, double &resistance, string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   // Exemple simplifié : Utiliser les plus hauts et plus bas sur les 20 dernières bougies
-   int highest_index = iHighest(symbol, timeframe, MODE_HIGH, 20, 1);
-   int lowest_index = iLowest(symbol, timeframe, MODE_LOW, 20, 1);
-   resistance = iHigh(symbol, timeframe, highest_index);
-   support = iLow(symbol, timeframe, lowest_index);
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour normaliser les données des indicateurs              |
-//+------------------------------------------------------------------+
-void NormalizeInputs(double &inputs[])
-{
-   // Exemple simplifié : Normaliser les données pour les ramener à une échelle commune (0 à 1)
-   // À adapter selon vos indicateurs spécifiques
-   inputs[0] = inputs[0] / 100.0; // RSI M15 (0 à 100)
-   inputs[1] = inputs[1] / 100.0; // RSI H1 (0 à 100)
-   inputs[2] = inputs[2] / 1000.0; // Différence MA (à ajuster selon l'échelle)
-   inputs[3] = inputs[3] / 1000.0; // Ichimoku (à ajuster selon l'échelle)
-   inputs[4] = inputs[4] / 100000.0; // Volume (à ajuster selon l'échelle)
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour collecter les données des indicateurs (avec symbole et UT) |
-//+------------------------------------------------------------------+
-void CollectIndicatorData(double &inputs[], string symbol, ENUM_TIMEFRAMES timeframe, int shift = 0)
-{
-   ArrayResize(inputs, INPUT_SIZE);
-
-   // Collecter les valeurs des indicateurs pour le symbole et l'UT spécifiés
-
-   // RSI M15
-   int rsi_m15_handle = iRSI(symbol, PERIOD_M15, 14, PRICE_CLOSE);
-   if (rsi_m15_handle == INVALID_HANDLE)
-   {
-      Print("Erreur: Impossible de créer le handle RSI M15 pour ", symbol);
-      inputs[0] = 0.0; // Valeur par défaut en cas d'erreur
-   }
-   else
-   {
-      double rsi_m15[];
-      ArraySetAsSeries(rsi_m15, true);
-      if (CopyBuffer(rsi_m15_handle, 0, shift, 1, rsi_m15) <= 0)
-      {
-         Print("Erreur lors de la copie des données RSI M15 pour ", symbol);
-         inputs[0] = 0.0; // Valeur par défaut en cas d'erreur
-      }
-      else
-      {
-         inputs[0] = rsi_m15[0];
-      }
-      IndicatorRelease(rsi_m15_handle); // Libérer le handle après utilisation
-   }
-
-   // RSI H1
-   int rsi_h1_handle = iRSI(symbol, PERIOD_H1, 14, PRICE_CLOSE);
-   if (rsi_h1_handle == INVALID_HANDLE)
-   {
-      Print("Erreur: Impossible de créer le handle RSI H1 pour ", symbol);
-      inputs[1] = 0.0; // Valeur par défaut en cas d'erreur
-   }
-   else
-   {
-      double rsi_h1[];
-      ArraySetAsSeries(rsi_h1, true);
-      if (CopyBuffer(rsi_h1_handle, 0, shift, 1, rsi_h1) <= 0)
-      {
-         Print("Erreur lors de la copie des données RSI H1 pour ", symbol);
-         inputs[1] = 0.0; // Valeur par défaut en cas d'erreur
-      }
-      else
-      {
-         inputs[1] = rsi_h1[0];
-      }
-      IndicatorRelease(rsi_h1_handle); // Libérer le handle après utilisation
-   }
-
-   // MA rapide
-   int ma_fast_handle = iMA(symbol, timeframe, 20, 0, MODE_SMA, PRICE_CLOSE);
-   if (ma_fast_handle == INVALID_HANDLE)
-   {
-      Print("Erreur: Impossible de créer le handle MA rapide pour ", symbol);
-      inputs[2] = 0.0; // Valeur par défaut en cas d'erreur
-   }
-   else
-   {
-      double ma_fast[];
-      ArraySetAsSeries(ma_fast, true);
-      if (CopyBuffer(ma_fast_handle, 0, shift, 1, ma_fast) <= 0)
-      {
-         Print("Erreur lors de la copie des données MA rapide pour ", symbol);
-         inputs[2] = 0.0; // Valeur par défaut en cas d'erreur
-      }
-      else
-      {
-         // MA lente
-         int ma_slow_handle = iMA(symbol, timeframe, 50, 0, MODE_SMA, PRICE_CLOSE);
-         if (ma_slow_handle == INVALID_HANDLE)
-         {
-            Print("Erreur: Impossible de créer le handle MA lente pour ", symbol);
-            inputs[2] = 0.0; // Valeur par défaut en cas d'erreur
-         }
-         else
-         {
-            double ma_slow[];
-            ArraySetAsSeries(ma_slow, true);
-            if (CopyBuffer(ma_slow_handle, 0, shift, 1, ma_slow) <= 0)
-            {
-               Print("Erreur lors de la copie des données MA lente pour ", symbol);
-               inputs[2] = 0.0; // Valeur par défaut en cas d'erreur
-            }
-            else
-            {
-               inputs[2] = ma_fast[0] - ma_slow[0]; // Différence entre MA rapide et lente
-            }
-            IndicatorRelease(ma_slow_handle); // Libérer le handle après utilisation
-         }
-      }
-      IndicatorRelease(ma_fast_handle); // Libérer le handle après utilisation
-   }
-
-   // Ichimoku (Tenkan - Kijun)
-   int ichimoku_handle = iIchimoku(symbol, timeframe, 9, 26, 52);
-   if (ichimoku_handle == INVALID_HANDLE)
-   {
-      Print("Erreur: Impossible de créer le handle Ichimoku pour ", symbol);
-      inputs[3] = 0.0; // Valeur par défaut en cas d'erreur
-   }
-   else
-   {
-      double tenkan[], kijun[];
-      ArraySetAsSeries(tenkan, true);
-      ArraySetAsSeries(kijun, true);
-      if (CopyBuffer(ichimoku_handle, 0, shift, 1, tenkan) <= 0 || // Tenkan-sen (buffer 0)
-          CopyBuffer(ichimoku_handle, 1, shift, 1, kijun) <= 0)    // Kijun-sen (buffer 1)
-      {
-         Print("Erreur lors de la copie des données Ichimoku pour ", symbol);
-         inputs[3] = 0.0; // Valeur par défaut en cas d'erreur
-      }
-      else
-      {
-         inputs[3] = tenkan[0] - kijun[0]; // Différence entre Tenkan et Kijun
-      }
-      IndicatorRelease(ichimoku_handle); // Libérer le handle après utilisation
-   }
-
-   // Volume
-   long volume[];
-   ArraySetAsSeries(volume, true);
-   if (CopyTickVolume(symbol, timeframe, shift, 1, volume) <= 0)
-   {
-      Print("Erreur lors de la copie des données de volume pour ", symbol);
-      inputs[4] = 0.0; // Valeur par défaut en cas d'erreur
-   }
-   else
-   {
-      inputs[4] = (double)volume[0]; // Convertir long en double
-   }
-
-   // Normaliser les données
-   NormalizeInputs(inputs);
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour déterminer la cible réelle                          |
-//+------------------------------------------------------------------+
-double DetermineTarget(int shift = 0)
-{
-   // Déterminer si le marché a monté ou baissé sur les 5 prochaines bougies
-   double current_close = iClose(_Symbol, PERIOD_CURRENT, shift + 1);
-   double future_close = iClose(_Symbol, PERIOD_CURRENT, shift - 4); // 5 bougies plus tard
-   return (future_close > current_close) ? 1.0 : 0.0;
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour calculer le taux de succès réel                     |
-//+------------------------------------------------------------------+
-double CalculateSuccessRate()
-{
-   // Exemple : Analyser les 100 dernières prédictions
-   int num_samples = 100;
-   int correct_predictions = 0;
-
-   // Vérification des tailles
-   if (INPUT_SIZE <= 0 || HIDDEN_SIZE <= 0 || OUTPUT_SIZE <= 0)
-   {
-      Print("Erreur: INPUT_SIZE, HIDDEN_SIZE ou OUTPUT_SIZE est invalide.");
-      return 0.0;
-   }
-
-   // Déclaration des tableaux dynamiques
-   double inputs[];
-   double hidden[];
-   double output[];
-
-   ArrayResize(inputs, INPUT_SIZE);
-   ArrayResize(hidden, HIDDEN_SIZE);
-   ArrayResize(output, OUTPUT_SIZE);
-
-   // Charger les prédictions et résultats réels
-   for (int i = 0; i < num_samples; i++)
-   {
-      CollectIndicatorData(inputs, _Symbol, PERIOD_CURRENT, i + 1); // Données historiques
-      double probability = ForwardPropagation(inputs, hidden, output);
-      
-      // Vérification de l'index de DetermineTarget
-      double target = DetermineTarget(i + 1);
-
-      // Compter les prédictions correctes
-      if ((probability > 0.5 && target == 1.0) || (probability <= 0.5 && target == 0.0))
-         correct_predictions++;
-   }
-
-   // Calculer le taux de succès
-   return (double)correct_predictions / num_samples;
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour ajuster la prédiction en fonction des news (avec symbole) |
-//+------------------------------------------------------------------+
-double AdjustPredictionWithNews(double probability, string symbol)
-{
-   if (!UseNewsFilter)
-      return probability;
-
-   datetime current_time = TimeCurrent();
-   int news_sentiment = AnalyzeNewsSentiment(symbol, current_time);
-
-   // Ajuster la probabilité en fonction du sentiment des news
-   if (news_sentiment > 0) // Haussier
-      probability += 0.1; // Augmenter la probabilité de hausse
-   else if (news_sentiment < 0) // Baissier
-      probability -= 0.1; // Réduire la probabilité de hausse
-
-   // S'assurer que la probabilité reste entre 0 et 1
-   probability = MathMax(0.0, MathMin(1.0, probability));
-   return probability;
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour gérer l'auto-apprentissage                          |
-//+------------------------------------------------------------------+
-void AutoLearn()
-{
-   // Déclarez les tableaux dynamiquement sans dimensions
-   double inputs[];
-   double hidden[];
-   double output[];
-   
-   // Dimensionnez les tableaux avec ArrayResize
-   ArrayResize(inputs, INPUT_SIZE);
-   ArrayResize(hidden, HIDDEN_SIZE);
-   ArrayResize(output, OUTPUT_SIZE);
-   
-   int num_samples = 100;
-   
-   // Effectuer 10 epochs d'entraînement
-   for (int epoch = 0; epoch < 10; epoch++)
-   {
-      for (int i = 0; i < num_samples; i++)
-      {
-         // Collecter les données pour cet échantillon
-         CollectIndicatorData(inputs, _Symbol, PERIOD_CURRENT, i + 1);
-         
-         // Déterminer la cible
-         double target = DetermineTarget(i + 1);
-         
-         // Propagation avant
-         ForwardPropagation(inputs, hidden, output);
-         
-         // Rétropropagation (mise à jour des poids)
-         Backpropagation(inputs, hidden, output, target);
-      }
-   }
-   
-   Print("Auto-apprentissage effectué sur les 100 dernières bougies.");
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour gérer l'interface de discussion                     |
-//+------------------------------------------------------------------+
-void UpdateDiscussionInterface(string message)
-{
-   // Mettre à jour l'étiquette avec le message
-   label.Description("Réponse : " + message);
-
-   // Envoyer une notification si activé
-   SendNotification(message);
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour gérer les prédictions et les décisions de trading   |
-//+------------------------------------------------------------------+
-void ManageTrading()
-{
-   // Vérifier si une nouvelle bougie est apparue
-   if (!IsNewBar())
-      return;
-
-   // Construire la liste des symboles actifs
-   BuildActiveSymbolList();
-
-   // Si aucun symbole actif n'est disponible, utiliser le symbole actuel
-   if (ArraySize(ActiveSymbols) == 0)
-   {
-      Print("Aucun symbole actif disponible. Utilisation du symbole actuel : ", _Symbol);
-      ArrayResize(ActiveSymbols, 1);
-      ActiveSymbols[0] = _Symbol;
-   }
-
-   // Parcourir tous les symboles actifs pour faire des prédictions et trader
-   for (int i = 0; i < ArraySize(ActiveSymbols); i++)
-   {
-      // Vérifier que l'index est valide
-      if (i >= ArraySize(ActiveSymbols))
-         continue;
-         
-      string trading_pair = ActiveSymbols[i];
-      ENUM_TIMEFRAMES trading_tf = ChooseBestTimeframe(trading_pair);
-
-      // Note : MT5 ne permet pas de changer dynamiquement le symbole/UT d'un EA en cours d'exécution
-      // Nous devons donc évaluer et trader chaque symbole indépendamment, en utilisant ses données
-      Print("Analyse de la paire : ", trading_pair, " / UT : ", EnumToString(trading_tf));
-
-      // Collecter les données des indicateurs pour ce symbole et cette UT
-      double inputs[];
-      ArrayResize(inputs, INPUT_SIZE);
-      CollectIndicatorData(inputs, trading_pair, trading_tf);
-
-      // Faire une prédiction
-      double hidden[];
-      double output[];
-      ArrayResize(hidden, HIDDEN_SIZE);
-      ArrayResize(output, OUTPUT_SIZE);
-      double probability = ForwardPropagation(inputs, hidden, output);
-
-      // Ajuster la prédiction en fonction des news
-      probability = AdjustPredictionWithNews(probability, trading_pair);
-
-      // Afficher la prédiction
-      string prediction_message = "Paire : " + trading_pair + " - Probabilité de hausse : " + DoubleToString(probability * 100, 2) + "%";
-      Print(prediction_message);
-      UpdateDiscussionInterface(prediction_message);
-
-      // Prendre une décision de trading
-      double support, resistance;
-      DetectSupportResistance(support, resistance, trading_pair, trading_tf);
-
-      if (probability > 0.7) // Seuil pour acheter
-      {
-         double lot_size = AdjustLotSize(probability);
-         double sl = support; // SL basé sur le support
-         double tp = resistance; // TP basé sur la résistance
-         TradeBuy(lot_size, sl, tp, trading_pair);
-         UpdateDiscussionInterface("Achat effectué sur " + trading_pair + ". Lot : " + DoubleToString(lot_size, 2) + ", SL : " + DoubleToString(sl, 5) + ", TP : " + DoubleToString(tp, 5));
-      }
-      else if (probability < 0.3) // Seuil pour vendre
-      {
-         double lot_size = AdjustLotSize(1.0 - probability);
-         double sl = resistance; // SL basé sur la résistance
-         double tp = support; // TP basé sur le support
-         TradeSell(lot_size, sl, tp, trading_pair);
-         UpdateDiscussionInterface("Vente effectuée sur " + trading_pair + ". Lot : " + DoubleToString(lot_size, 2) + ", SL : " + DoubleToString(sl, 5) + ", TP : " + DoubleToString(tp, 5));
-      }
-
-      // Auto-apprentissage (par exemple, toutes les 10 bougies, uniquement pour le symbole actuel)
-      if (trading_pair == _Symbol) // Limiter l'auto-apprentissage au symbole actuel pour éviter des conflits
-      {
-         static int bar_count = 0;
-         bar_count++;
-         if (bar_count >= 10)
-         {
-            AutoLearn();
-            bar_count = 0;
-         }
-      }
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour gérer les paramètres de l'EA                        |
-//+------------------------------------------------------------------+
-void UpdateEAParameters()
-{
-   // Exemple : Mettre à jour dynamiquement certains paramètres en fonction des performances
-   double success_rate = CalculateSuccessRate();
-   if (success_rate < 0.6) // Si les performances sont faibles
-   {
-      learning_rate *= 1.1; // Augmenter le taux d'apprentissage pour accélérer l'apprentissage
-      Print("Taux d'apprentissage augmenté à : ", DoubleToString(learning_rate, 4));
-   }
-   else if (success_rate > 0.8) // Si les performances sont très bonnes
-   {
-      learning_rate *= 0.9; // Réduire le taux d'apprentissage pour stabiliser
-      Print("Taux d'apprentissage réduit à : ", DoubleToString(learning_rate, 4));
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour charger les paramètres du réseau                    |
-//+------------------------------------------------------------------+
-void LoadNetworkParameters()
-{
-   int handle = FileOpen("network_parameters.bin", FILE_READ | FILE_BIN);
-   if (handle != INVALID_HANDLE)
-   {
-      // Lire les poids entre la couche d'entrée et la couche cachée
-      for (int i = 0; i < INPUT_SIZE; i++)
-      {
-         for (int j = 0; j < HIDDEN_SIZE; j++)
-         {
-            weights_input_hidden[i][j] = FileReadDouble(handle);
-         }
-      }
-
-      // Lire les poids entre la couche cachée et la couche de sortie
-      for (int i = 0; i < HIDDEN_SIZE; i++)
-      {
-         for (int j = 0; j < OUTPUT_SIZE; j++)
-         {
-            weights_hidden_output[i][j] = FileReadDouble(handle);
-         }
-      }
-
-      // Lire les biais de la couche cachée
-      for (int i = 0; i < HIDDEN_SIZE; i++)
-      {
-         bias_hidden[i] = FileReadDouble(handle);
-      }
-
-      // Lire les biais de la couche de sortie
-      for (int i = 0; i < OUTPUT_SIZE; i++)
-      {
-         bias_output[i] = FileReadDouble(handle);
-      }
-
-      FileClose(handle);
-   }
-   else
-   {
-      Print("Erreur: Impossible d'ouvrir le fichier network_parameters.bin pour lecture.");
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Fonction pour sauvegarder les paramètres du réseau                |
-//+------------------------------------------------------------------+
-void SaveNetworkParameters()
-{
-   int handle = FileOpen("network_parameters.bin", FILE_WRITE | FILE_BIN);
-   if (handle != INVALID_HANDLE)
-   {
-      // Écrire les poids entre la couche d'entrée et la couche cachée
-      for (int i = 0; i < INPUT_SIZE; i++)
-      {
-         for (int j = 0; j < HIDDEN_SIZE; j++)
-         {
-            FileWriteDouble(handle, weights_input_hidden[i][j]);
-         }
-      }
-
-      // Écrire les poids entre la couche cachée et la couche de sortie
-      for (int i = 0; i < HIDDEN_SIZE; i++)
-      {
-         for (int j = 0; j < OUTPUT_SIZE; j++)
-         {
-            FileWriteDouble(handle, weights_hidden_output[i][j]);
-         }
-      }
-
-      // Écrire les biais de la couche cachée
-      for (int i = 0; i < HIDDEN_SIZE; i++)
-      {
-         FileWriteDouble(handle, bias_hidden[i]);
-      }
-
-      // Écrire les biais de la couche de sortie
-      for (int i = 0; i < OUTPUT_SIZE; i++)
-      {
-         FileWriteDouble(handle, bias_output[i]);
-      }
-
-      FileClose(handle);
-   }
-   else
-   {
-      Print("Erreur: Impossible d'ouvrir le fichier network_parameters.bin pour écriture.");
-   }
 }
 
 //+------------------------------------------------------------------+
